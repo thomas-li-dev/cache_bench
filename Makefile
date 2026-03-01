@@ -1,0 +1,38 @@
+CXX      := g++
+CXXFLAGS := -Wall -Wextra -O2 -std=c++23 -MMD -MP
+LDFLAGS  :=
+
+TARGET := cache_bench
+
+SRCS := $(wildcard *.cpp)
+OBJS := $(SRCS:.cpp=.o)
+DEPS := $(OBJS:.o=.d)
+
+DEBUG_CXXFLAGS := -Wall -Wextra -Og -g -std=c++23 -MMD -MP \
+                  -fsanitize=address,undefined -fno-omit-frame-pointer
+DEBUG_TARGET   := cache_bench_debug
+DEBUG_OBJS     := $(SRCS:.cpp=.debug.o)
+DEBUG_DEPS     := $(DEBUG_OBJS:.o=.d)
+
+.PHONY: all debug clean
+
+all: $(TARGET)
+
+$(TARGET): $(OBJS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+debug: $(DEBUG_TARGET)
+
+$(DEBUG_TARGET): $(DEBUG_OBJS)
+	$(CXX) $(DEBUG_CXXFLAGS) -o $@ $^
+
+%.debug.o: %.cpp
+	$(CXX) $(DEBUG_CXXFLAGS) -c -o $@ $<
+
+-include $(DEPS) $(DEBUG_DEPS)
+
+clean:
+	rm -f $(OBJS) $(DEPS) $(DEBUG_OBJS) $(DEBUG_DEPS) $(TARGET) $(DEBUG_TARGET)
