@@ -1,16 +1,18 @@
 #pragma once
 #include "cache.h"
 #include "fun_timer.h"
+#include <memory>
 
 class CacheRunner {
 private:
   std::string n;
-  ICache *c;
+  std::unique_ptr<ICache> c;
   FunTimer ft;
   int queries = 0, hits = 0;
 
 public:
-  CacheRunner(std::string name, ICache *cache) : n(name), c(cache) {}
+  CacheRunner(std::string name, std::unique_ptr<ICache> cache)
+      : n(name), c(std::move(cache)) {}
   // TODO: runtime polymorphism has overhead.
   void do_query(key_type key) {
     queries++;
@@ -41,4 +43,5 @@ public:
     ft.print();
     std::println("hitrate = {}", 1.0 * hits / queries);
   }
+  void reset() { ft.reset(); }
 };

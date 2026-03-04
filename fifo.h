@@ -13,17 +13,17 @@ private:
 public:
   FIFO(size_t cap) : c(cap) {}
 
-  void evict() {
+  void evict() override {
     assert(q.size());
     auto k = q.front();
     q.pop();
     s.erase(k);
   }
-  bool in(key_type key) { return s.contains(key); }
-  void add(key_type key) {
+  bool in(key_type key) override { return s.contains(key); }
+  void add(key_type key) override {
     assert(q.size() < c);
     s.insert(key);
     q.push(key);
   }
-  bool can_add() const { return s.size() < c; }
+  bool can_add() const override { return s.size() < c; }
 };

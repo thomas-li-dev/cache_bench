@@ -22,4 +22,5 @@ public:
       metrics.print();
     }
   }
+  void reset() { m.clear(); }
 };
