@@ -21,4 +21,10 @@ struct Metrics {
     }
     std::println("avg = {}, mn = {}, mx = {}", sum / cnt, mn, mx);
   }
+  void reset() {
+    sum = 0;
+    cnt = 0;
+    mn = std::numeric_limits<double>::max();
+    mx = std::numeric_limits<double>::lowest();
+  }
 };

@@ -33,7 +33,7 @@ private:
 
 public:
   TwiTrace(const std::string &path, int parts) : path(path), parts(parts) {}
-  void run_each_query(std::function<void(key_type)> to_run) override {
+  void run_each_query(std::function<void(key)> to_run) override {
     auto run_part = [&](std::string_view s) {
       // process each query.
       // avoid allocating any more strings
