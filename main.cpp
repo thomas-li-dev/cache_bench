@@ -11,6 +11,6 @@ int main() {
   b.add_cache<FIFO>("FIFO", 1 << 10);
   b.add_cache<LRU>("LRU", 1 << 10);
   b.add_cache<BadCache>("BadCache");
-  b.add_trace<TwiTrace>("twitter", twi_trace_location, 1);
+  b.add_trace<TwiTrace>("twitter", twi_trace_location);
   b.run();
 }

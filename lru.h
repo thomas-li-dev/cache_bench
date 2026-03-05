@@ -9,8 +9,10 @@
 class LRU : public ICache {
 private:
   size_t c;
-  std::list<key> l;
-  std::unordered_map<key, std::pair<token, std::list<key>::iterator>> m;
+  std::list<key_t> l;
+  std::unordered_map<key_t,
+                     std::pair<cache_token_t, std::list<key_t>::iterator>>
+      m;
 
   void evict() {
     assert(l.size());
@@ -18,8 +20,8 @@ private:
     l.pop_back();
     m.erase(k);
   }
-  bool in(key key) { return m.contains(key); }
-  void add(key key, token t) {
+  bool in(cache_key_t key) { return m.contains(key); }
+  void add(cache_key_t key, cache_token_t t) {
     assert(l.size() < c);
     auto itr = l.insert(l.begin(), key);
     m[key] = {t, itr};
@@ -29,13 +31,15 @@ private:
 public:
   LRU(size_t cap) : c(cap) {}
 
-  token query(key k, std::function<token(key)> get_token) override {
+  cache_token_t
+  query(cache_key_t k,
+        std::function<cache_token_t(cache_key_t)> get_token) override {
     if (in(k)) {
       auto [t, itr] = m[k];
       l.splice(l.begin(), l, itr);
       return t;
     }
-    token t = get_token(k);
+    cache_token_t t = get_token(k);
     if (!can_add())
       evict();
     add(k, t);

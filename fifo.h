@@ -8,8 +8,8 @@
 class FIFO : public ICache {
 private:
   size_t c;
-  std::queue<key> q;
-  std::unordered_map<key, token> m;
+  std::queue<key_t> q;
+  std::unordered_map<cache_key_t, cache_token_t> m;
 
   void evict() {
     assert(q.size());
@@ -17,8 +17,8 @@ private:
     q.pop();
     m.erase(k);
   }
-  bool in(key key) { return m.contains(key); }
-  void add(key key, token t) {
+  bool in(cache_key_t key) { return m.contains(key); }
+  void add(cache_key_t key, cache_token_t t) {
     assert(q.size() < c);
     m[key] = t;
     q.push(key);
@@ -28,11 +28,13 @@ private:
 public:
   FIFO(size_t cap) : c(cap) {}
 
-  token query(key k, std::function<token(key)> get_token) override {
+  cache_token_t
+  query(cache_key_t k,
+        std::function<cache_token_t(cache_key_t)> get_token) override {
     if (in(k)) {
       return m[k];
     }
-    token t = get_token(k);
+    cache_token_t t = get_token(k);
     if (!can_add())
       evict();
     add(k, t);

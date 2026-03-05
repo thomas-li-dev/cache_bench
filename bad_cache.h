@@ -5,7 +5,9 @@
 
 class BadCache : public ICache {
 public:
-  token query(key k, std::function<token(key)> get_token) override {
+  cache_token_t
+  query(cache_key_t k,
+        std::function<cache_token_t(cache_key_t)> get_token) override {
     return get_token(k);
   }
 };

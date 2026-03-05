@@ -45,28 +45,43 @@ private:
   std::vector<std::pair<std::string, std::unique_ptr<ITrace>>> traces;
   uint64_t secret = std::random_device()();
 
+  // TODO: convex hull!!!
+  const double miss_cost = 1e6; // 1e6ns = 1 ms
 public:
   void run() {
     for (auto &[name, trace] : traces) {
       std::println("running trace {}", name);
-      int qp = 0;
-      trace->run_each_query([&](key key) {
+      // TODO: make configurable.
+      // probably queries should be configured by the
+      // trace parameters (and having to_buf return empty once hitting
+      // configured num)
+      const size_t batch_size = 1e8, total_queries = 1e10;
+      // we only use vector as a RAII container for this buffer
+      // shouldn't reallocate ever.
+      std::vector<cache_key_t> buf(batch_size);
+      for (size_t num_done = 0, siz; num_done < total_queries;) {
+        siz = trace->to_buf(buf);
+        size_t rem = total_queries - num_done;
+        if (!siz)
+          break;
+        siz = std::min(siz, rem);
+        num_done += siz;
+        std::span<cache_key_t> span(buf.data(), siz);
         for (auto &cache : caches) {
-          cache.do_query(key);
+          QueryStats stats = cache.do_queries(span);
+
+          // cost as function of miss_cost.
+          double cost =
+              1.0 * stats.runtime.count() / stats.queries +
+              1.0 * (stats.queries - stats.hits) / stats.queries * miss_cost;
+          std::println("cache {} stats: hit rate {:.3f} avg latency {:.3f} "
+                       "ns/query throughput {:.3f} queries/s cost {:.3f}",
+                       cache.get_name(), 1.0 * stats.hits / stats.queries,
+                       1.0 * stats.runtime.count() / stats.queries,
+                       1.0 * stats.queries / stats.runtime.count() * 1e9, cost);
         }
-        if (++qp % 1000000 == 0) {
-          std::println("processed {} queries", qp);
-          /*
-          for (auto &cache : caches)
-            cache.print();*/
-          // TODO: have proper way to warm up and then measure.
-          for (auto &cache : caches)
-            cache.reset();
-        }
-      });
+      }
     }
-    for (auto &cache : caches)
-      cache.print();
   }
   template <class T, class... Args>
   void add_cache(const std::string &name, Args &&...args) {

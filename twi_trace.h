@@ -26,77 +26,100 @@ not a write request.
 only key is important.
 check operation to only take gets.
 */
+namespace fs = std::filesystem;
 class TwiTrace : public ITrace {
 private:
-  std::string path;
-  int parts;
+  const fs::path path;
+  fs::directory_iterator next_trace_itr;
+  std::string_view current_trace_suffix;
+
+  // these are just used for unmapping.
+  void *current_trace_addr = nullptr;
+  size_t current_trace_size = 0;
+  void *mmap_trace_part(const fs::directory_entry &trace) {
+    auto size = fs::file_size(trace.path());
+    int fd = open(trace.path().c_str(), O_RDONLY);
+    assert(fd != -1);
+    void *trace_addr = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
+    assert(trace_addr != MAP_FAILED);
+    close(fd);
+    return trace_addr;
+  }
+  std::optional<cache_key_t> parse_line(std::string_view s) {
+    int which = 0;
+
+    uint64_t h = 0;
+    bool skip = 0;
+
+    for (size_t k = 0, st = 0; k <= s.size(); k++) {
+      if (k == s.size() || s[k] == ',') {
+        std::string_view t = s.substr(st, k - st);
+        if (which == 1) {
+          // compute a simple rolling hash of the string.
+          // trivial to hack but should be fine for the trace.
+          h = 0;
+          for (char c : t)
+            h = h * 31 + c;
+        } else if (which == 5) {
+          // skip none get / gets operations.
+          // almost all lines are get in the twi trace.
+          if (!t.starts_with("get"))
+            skip = 1;
+        }
+        which++;
+        st = k + 1;
+      }
+    }
+    if (which != 7 || skip)
+      return {};
+    return h;
+  };
+  std::optional<cache_key_t> next_key() override {
+    while (true) {
+      if (current_trace_suffix.empty()) {
+        // default directory is end iterator (least weird cpp design)
+        if (next_trace_itr == fs::directory_iterator{})
+          return {};
+        if (current_trace_addr)
+          munmap(current_trace_addr, current_trace_size);
+
+        auto next_trace = *next_trace_itr++;
+        current_trace_addr = mmap_trace_part(next_trace);
+        current_trace_size = next_trace.file_size();
+        current_trace_suffix = {(const char *)current_trace_addr,
+                                next_trace.file_size()};
+      }
+      auto end = current_trace_suffix.find_first_of('\n');
+      if (end == std::string_view::npos) {
+        // skip to the next trace.
+        current_trace_suffix = {};
+        continue;
+      }
+      std::string_view line = current_trace_suffix.substr(0, end);
+      current_trace_suffix.remove_prefix(end + 1);
+      auto k = parse_line(line);
+      if (k) {
+        return k;
+      }
+    }
+  }
 
 public:
-  TwiTrace(const std::string &path, int parts) : path(path), parts(parts) {}
-  void run_each_query(std::function<void(key)> to_run) override {
-    auto run_part = [&](std::string_view s) {
-      // process each query.
-      // avoid allocating any more strings
-      // probably could be parsed faster with simd :monkey:
-      for (size_t i = 0; i < s.size(); i++) {
-        auto j = i;
-        while (j + 1 < s.size() && s[j + 1] != '\n')
-          j++;
+  // generally we assume that the path contains the whole trace files.
+  // don't do much error checking.
+  TwiTrace(const std::string &path)
+      : path(path), next_trace_itr(fs::directory_iterator{path}) {}
+  ~TwiTrace() {
+    if (current_trace_addr)
+      munmap(current_trace_addr, current_trace_size);
+  }
 
-        // [i,j] is a line.
-        int which = 0;
-
-        uint64_t h = 0;
-        bool skip = 0;
-
-        for (size_t k = i, st = i; k <= j + 1; k++) {
-          if (k > j || s[k] == ',') {
-            if (which == 1) {
-              // compute a simple rolling hash of the string.
-              // trivial to hack but should be fine for the trace.
-              h = 0;
-              for (size_t i = st; i < k; i++) {
-                h = h * 31 + s[i];
-              }
-            } else if (which == 5) {
-              // skip none get / gets operations.
-              // almost all lines are get in the twi trace.
-              if (s[st] != 'g' || s[st + 1] != 'e' || s[st + 2] != 't') {
-                skip = 1;
-              }
-            }
-            which++;
-            st = k + 1;
-          }
-        }
-        if (which != 7) {
-          std::println("strange line {} {} which = {}: {}\n{}", i, j, which,
-                       s.substr(i, j - i + 1), s.substr(j + 1, 100));
-          continue;
-        }
-        if (!skip) {
-          to_run(h);
-        }
-        i = j;
-      }
-    };
-    namespace fs = std::filesystem;
-    const fs::path twi_traces{path};
-    int part = 0;
-    for (const auto &trace : fs::directory_iterator{twi_traces}) {
-      // each trace is ~10gb
-      // we'll mmap this file.
-      auto size = fs::file_size(trace.path());
-      int fd = open(trace.path().c_str(), O_RDONLY);
-      assert(fd != -1);
-      void *trace_addr = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
-      assert(trace_addr != MAP_FAILED);
-      close(fd);
-      std::println("mmapped at {}", trace_addr);
-      run_part(std::string_view{(const char *)trace_addr, size});
-      munmap(trace_addr, size);
-      if (++part == parts)
-        break;
-    }
+  void reset() override {
+    if (current_trace_addr)
+      munmap(current_trace_addr, current_trace_size);
+    current_trace_addr = nullptr;
+    current_trace_size = 0;
+    current_trace_suffix = {};
+    next_trace_itr = fs::directory_iterator(path);
   }
 };

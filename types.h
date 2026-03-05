@@ -1,10 +1,11 @@
 #pragma once
 #include <cstdint>
 
-using key = uint64_t;
-using token = uint64_t;
+using cache_key_t = uint64_t;
+using cache_token_t = uint64_t;
 
-static inline token get_token_from_secret(key k, uint64_t secret) {
+static inline cache_token_t get_token_from_secret(cache_key_t k,
+                                                  uint64_t secret) {
   // source: https://oi-wiki.org/graph/tree-hash/
   k ^= secret;
   k ^= secret;
