@@ -4,7 +4,9 @@
 #include "cache_runner.h"
 #include "fifo.h"
 #include "trace.h"
+#include <chrono>
 #include <memory>
+#include <print>
 #include <random>
 #include <vector>
 

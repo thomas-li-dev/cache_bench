@@ -1,8 +1,8 @@
 #pragma once
 #include "cache.h"
-#include "fun_timer.h"
+#include <chrono>
 #include <memory>
-#include <queue>
+#include <print>
 #include <span>
 
 // TODO: do we need bench -> cacherunner -> cache?
