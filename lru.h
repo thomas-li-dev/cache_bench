@@ -9,9 +9,9 @@
 class LRU : public ICache {
 private:
   size_t c;
-  std::list<key_t> l;
-  std::unordered_map<key_t,
-                     std::pair<cache_token_t, std::list<key_t>::iterator>>
+  std::list<cache_key_t> l;
+  std::unordered_map<cache_key_t,
+                     std::pair<cache_token_t, std::list<cache_key_t>::iterator>>
       m;
 
   void evict() {

@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 
+// WTFFFF key_t is a POSIX type :ICANT:
 using cache_key_t = uint64_t;
 using cache_token_t = uint64_t;
 

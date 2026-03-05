@@ -8,7 +8,7 @@
 class FIFO : public ICache {
 private:
   size_t c;
-  std::queue<key_t> q;
+  std::queue<cache_key_t> q;
   std::unordered_map<cache_key_t, cache_token_t> m;
 
   void evict() {
