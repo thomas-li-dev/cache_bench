@@ -4,7 +4,9 @@ LDFLAGS  :=
 
 TARGET := cache_bench
 
-SRCS := $(wildcard *.cpp)
+# Recursively collect C++ sources from subdirectories.
+rwildcard = $(foreach d,$(wildcard $(1)/*),$(call rwildcard,$(d),$(2)) $(filter $(subst *,%,$(2)),$(d)))
+SRCS := $(sort $(call rwildcard,.,*.cpp))
 OBJS := $(SRCS:.cpp=.o)
 DEPS := $(OBJS:.o=.d)
 

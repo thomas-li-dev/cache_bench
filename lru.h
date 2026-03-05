@@ -3,40 +3,41 @@
 #include <cassert>
 #include <functional>
 #include <list>
+#include <mutex>
 #include <queue>
 #include <unordered_map>
-
 class LRU : public ICache {
 private:
-  size_t c;
-  std::list<cache_key_t> l;
+  size_t cap;
+  std::list<cache_key_t> order;
   std::unordered_map<cache_key_t,
                      std::pair<cache_token_t, std::list<cache_key_t>::iterator>>
-      m;
-
+      map;
+  std::mutex mut;
   void evict() {
-    assert(l.size());
-    auto k = l.back();
-    l.pop_back();
-    m.erase(k);
+    assert(order.size());
+    auto k = order.back();
+    order.pop_back();
+    map.erase(k);
   }
-  bool in(cache_key_t key) { return m.contains(key); }
+  bool in(cache_key_t key) { return map.contains(key); }
   void add(cache_key_t key, cache_token_t t) {
-    assert(l.size() < c);
-    auto itr = l.insert(l.begin(), key);
-    m[key] = {t, itr};
+    assert(order.size() < cap);
+    auto itr = order.insert(order.begin(), key);
+    map[key] = {t, itr};
   }
-  bool can_add() const { return m.size() < c; }
+  bool can_add() const { return map.size() < cap; }
 
 public:
-  LRU(size_t cap) : c(cap) {}
+  LRU(size_t cap) : cap(cap) {}
 
   cache_token_t
   query(cache_key_t k,
         std::function<cache_token_t(cache_key_t)> get_token) override {
+    std::lock_guard lock(mut);
     if (in(k)) {
-      auto [t, itr] = m[k];
-      l.splice(l.begin(), l, itr);
+      auto [t, itr] = map[k];
+      order.splice(order.begin(), order, itr);
       return t;
     }
     cache_token_t t = get_token(k);
@@ -45,4 +46,5 @@ public:
     add(k, t);
     return t;
   }
+  virtual size_t get_cap() const override { return cap; }
 };

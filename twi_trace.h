@@ -122,4 +122,15 @@ public:
     current_trace_suffix = {};
     next_trace_itr = fs::directory_iterator(path);
   }
+  // similar interface to read syscall
+  size_t next_buf(std::vector<cache_key_t> &buf) override {
+    for (size_t i = 0; i < buf.size(); i++) {
+      auto k = next_key();
+      if (k) {
+        buf[i] = *k;
+      } else
+        return i;
+    }
+    return buf.size();
+  }
 };

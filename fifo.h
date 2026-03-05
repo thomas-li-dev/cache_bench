@@ -2,37 +2,39 @@
 #include "cache.h"
 #include <cassert>
 #include <functional>
+#include <mutex>
 #include <queue>
 #include <unordered_map>
 
 class FIFO : public ICache {
 private:
-  size_t c;
-  std::queue<cache_key_t> q;
-  std::unordered_map<cache_key_t, cache_token_t> m;
-
+  size_t cap;
+  std::queue<cache_key_t> ord;
+  std::unordered_map<cache_key_t, cache_token_t> map;
+  std::mutex mut;
   void evict() {
-    assert(q.size());
-    auto k = q.front();
-    q.pop();
-    m.erase(k);
+    assert(ord.size());
+    auto k = ord.front();
+    ord.pop();
+    map.erase(k);
   }
-  bool in(cache_key_t key) { return m.contains(key); }
+  bool in(cache_key_t key) { return map.contains(key); }
   void add(cache_key_t key, cache_token_t t) {
-    assert(q.size() < c);
-    m[key] = t;
-    q.push(key);
+    assert(ord.size() < cap);
+    map[key] = t;
+    ord.push(key);
   }
-  bool can_add() const { return m.size() < c; }
+  bool can_add() const { return map.size() < cap; }
 
 public:
-  FIFO(size_t cap) : c(cap) {}
+  FIFO(size_t cap) : cap(cap) {}
 
   cache_token_t
   query(cache_key_t k,
         std::function<cache_token_t(cache_key_t)> get_token) override {
+    std::lock_guard lock(mut);
     if (in(k)) {
-      return m[k];
+      return map[k];
     }
     cache_token_t t = get_token(k);
     if (!can_add())
@@ -40,4 +42,5 @@ public:
     add(k, t);
     return t;
   }
+  virtual size_t get_cap() const override { return cap; }
 };

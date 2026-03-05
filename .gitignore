@@ -5,3 +5,5 @@ cache_bench_debug
 compile_commands.json
 twi_traces/
 .cache/
+plots/
+results.json

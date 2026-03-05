@@ -2,9 +2,11 @@
 // for each trace, run all eviction algos
 // collect metrics
 #include "cache_runner.h"
+#include "ext/json.hpp"
 #include "fifo.h"
 #include "trace.h"
 #include <chrono>
+#include <fstream>
 #include <memory>
 #include <print>
 #include <random>
@@ -49,20 +51,40 @@ private:
 
   // TODO: convex hull!!!
   const double miss_cost = 1e6; // 1e6ns = 1 ms
+  std::vector<size_t> threads_choices, cap_choices;
+
 public:
+  Bench(const std::vector<size_t> &threads_choices,
+        const std::vector<size_t> &cap_choices)
+      : threads_choices(threads_choices), cap_choices(cap_choices) {}
   void run() {
-    for (auto &[name, trace] : traces) {
-      std::println("running trace {}", name);
+    // for each cache & num threads & capacity (cache options)
+    // for each trace
+    // for each batch
+    // put stats
+    std::ofstream out("results.json");
+
+    for (auto &[trace_name, trace] : traces) {
+      std::println("running trace {}", trace_name);
       // TODO: make configurable.
       // probably queries should be configured by the
       // trace parameters (and having to_buf return empty once hitting
       // configured num)
-      const size_t batch_size = 1e8, total_queries = 1e10;
+
+      // choose batch size to be something that fits in memory, but reasonably
+      // big as we allocate resources for each batch like jsons, threads, etc.
+      const size_t batch_size = 1e5, total_queries = 1e6;
       // we only use vector as a RAII container for this buffer
       // shouldn't reallocate ever.
       std::vector<cache_key_t> buf(batch_size);
       for (size_t num_done = 0, siz; num_done < total_queries;) {
-        siz = trace->to_buf(buf);
+        std::println("batch {} start", num_done / batch_size);
+        auto start = std::chrono::high_resolution_clock::now();
+        siz = trace->next_buf(buf);
+        auto end = std::chrono::high_resolution_clock::now();
+        std::println(
+            "loaded queries into buf in {} ms",
+            std::chrono::duration<double, std::milli>(end - start).count());
         size_t rem = total_queries - num_done;
         if (!siz)
           break;
@@ -71,23 +93,38 @@ public:
         std::span<cache_key_t> span(buf.data(), siz);
         for (auto &cache : caches) {
           QueryStats stats = cache.do_queries(span);
-
-          // cost as function of miss_cost.
           double cost =
               1.0 * stats.runtime.count() / stats.queries +
               1.0 * (stats.queries - stats.hits) / stats.queries * miss_cost;
-          std::println("cache {} stats: hit rate {:.3f} avg latency {:.3f} "
-                       "ns/query throughput {:.3f} queries/s cost {:.3f}",
-                       cache.get_name(), 1.0 * stats.hits / stats.queries,
-                       1.0 * stats.runtime.count() / stats.queries,
-                       1.0 * stats.queries / stats.runtime.count() * 1e9, cost);
+          nlohmann::json results;
+          results["hit_rate"] = 1.0 * stats.hits / stats.queries;
+          results["avg_latency_ns"] =
+              1.0 * stats.runtime.count() / stats.queries;
+          results["throughput_qps"] =
+              1.0 * stats.queries / stats.runtime.count() * 1e9;
+          results["cost_ns"] = cost;
+          // std::println("batch results: {}", batch_results.dump());
+
+          // maybe better for trace to be first dim?
+          results["cache_name"] = cache.get_name();
+          results["trace_name"] = trace_name;
+          results["threads"] = cache.get_threads();
+          results["batch"] = num_done / batch_size;
+          results["capacity"] = cache.get_cap();
+          out << results.dump() << "\n";
         }
       }
     }
   }
+
   template <class T, class... Args>
   void add_cache(const std::string &name, Args &&...args) {
-    caches.push_back(CacheRunner(name, std::make_unique<T>(args...), secret));
+    for (size_t threads : threads_choices) {
+      for (size_t cap : cap_choices) {
+        caches.push_back(
+            CacheRunner(name, std::make_unique<T>(cap), secret, threads));
+      }
+    }
   }
   template <class T, class... Args>
   void add_trace(const std::string &name, Args &&...args) {
