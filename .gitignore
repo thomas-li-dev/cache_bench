@@ -7,3 +7,4 @@ twi_traces/
 .cache/
 plots/
 results.json
+analysis/data/
