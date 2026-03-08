@@ -4,6 +4,7 @@ from collections import OrderedDict
 
 from . import _register
 from .base import CacheAlgo
+from threading import RLock
 
 class SIEVENode:
     def __init__(self, value):
@@ -11,6 +12,8 @@ class SIEVENode:
         self.visited = False
         self.next = None
         self.prev = None
+
+        self.lock = RLock()
 
 @_register("sieve")
 class SIEVE(CacheAlgo):
@@ -26,43 +29,59 @@ class SIEVE(CacheAlgo):
         self.hand = None
         self.size = 0
 
+        self.rlock = threading.RLock()
+
     def get(self, obj_id: int) -> bool:
-        # Item in cache, set visited flag
-        if obj_id in self.cache: 
-            self.cache[obj_id].visited = True
-            return True
+        with self.rlock:
+            # Item in cache, set visited flag
+            if obj_id in self.cache: 
+                self.cache[obj_id].visited = True
+                return True
 
-        # if our cache is full, evict an element to make space 
-        if self.size == self.cache_size:
-            self._evict()
+            if self.cache_size == 0:
+                self._num_misses += 1
+                return False
 
-        # Eviction
-        node = SIEVENode(obj_id)
-        node.next = self.head
-        node.prev = None
-        if self.head:
-            self.head.prev = node
-        self.head = node
-        if self.tail is None:
-            self.tail = node
+            # if our cache is full, evict an element to make space 
+            if self.size == self.cache_size:
+                self._evict()
+
+            node = SIEVENode(obj_id)
+            node.next = self.head
+            node.prev = None
+            if self.head:
+                self.head.prev = node
+            self.head = node
+            if self.tail is None:
+                self.tail = node
+
+            self.cache[obj_id] = node
+            self.size += 1
+            node.visited = False 
+
+            return False
 
     def _evict(self):
-        to_remove = self.hand if self.hand else self.tail
-        while(to_remove != None and to_remove.visited == True):
-            # Unset visited
-            obj.visited = False
-            obj = obj.prev if obj.prev else self.tail
-        self.hand = obj.prev if obj.prev else None
-        
-        # Remove the object
-        del self.cache[obj.value]
-        if obj.prev:
-            obj.prev.next = obj.next
-        else:
-            self.head = obj.next
-        if obj.next:
-            obj.next.prev = obj.prev
-        else:
-            self.tail = obj.prev
-        
-        self.size -= 1
+        with self.rlock:
+            to_remove = self.hand if self.hand else self.tail
+            while(to_remove != None and to_remove.visited == True):
+                # Unset visited
+                to_remove.visited = False
+                to_remove = to_remove.prev if to_remove.prev else self.tail
+            if(to_remove == None):
+                # We should never reach this but just in case
+                return
+            self.hand = to_remove.prev if to_remove.prev else None
+            
+            # Remove the evicted element from our cache
+            del self.cache[to_remove.value]
+            if to_remove.prev:
+                to_remove.prev.next = to_remove.next
+            else:
+                self.head = to_remove.next
+            if to_remove.next:
+                to_remove.next.prev = to_remove.prev
+            else:
+                self.tail = to_remove.prev
+            
+            self.size -= 1
