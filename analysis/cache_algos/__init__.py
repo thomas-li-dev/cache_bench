@@ -17,3 +17,4 @@ def _register(name: str) -> Callable[[type[CacheAlgo]], type[CacheAlgo]]:
 from .fifo import FIFO
 from .lru import LRU
 from .clock import Clock
+from .twoq import TwoQ
