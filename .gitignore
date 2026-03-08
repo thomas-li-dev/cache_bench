@@ -8,3 +8,4 @@ twi_traces/
 plots/
 results.json
 analysis/data/
+venv/
