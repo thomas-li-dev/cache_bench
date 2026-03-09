@@ -200,7 +200,7 @@ def main() -> None:
     )
     p.add_argument("--large-frac", type=float, default=0.10, help="Large cache size as fraction of footprint (default 0.10)")
     p.add_argument("--small-frac", type=float, default=0.001, help="Small cache size as fraction of footprint (default 0.001)")
-    p.add_argument("--output", default="results/fig3cf_results.json", help="Output JSON path")
+    p.add_argument("--output", default="results/hit_rate.json", help="Output JSON path")
     p.add_argument(
         "--trace-globs",
         default="*.bin,*.zst",

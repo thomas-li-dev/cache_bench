@@ -18,3 +18,5 @@ from .fifo import FIFO
 from .lru import LRU
 from .clock import Clock
 from .twoq import TwoQ
+from .sieve import Sieve
+from .arc import ARC
