@@ -9,7 +9,6 @@ static inline cache_token_t get_token_from_secret(cache_key_t k,
                                                   uint64_t secret) {
   // source: https://oi-wiki.org/graph/tree-hash/
   k ^= secret;
-  k ^= secret;
   k ^= k << 13;
   k ^= k >> 7;
   k ^= k << 17;

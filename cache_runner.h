@@ -1,5 +1,6 @@
 #pragma once
 #include "cache.h"
+#include "types.h"
 #include <barrier>
 #include <chrono>
 #include <memory>
@@ -17,12 +18,16 @@ struct QueryStats {
   std::vector<uint64_t> samples;
 };
 
+enum class scale_policy { INTERLEAVE = 0, TRANSFORM_SPACE = 1 };
+
 class CacheRunner {
 private:
   std::string name;
   std::unique_ptr<ICache> cache;
   uint64_t secret;
   size_t num_threads;
+  scale_policy sp;
+  double cap_prop;
 
   void do_query(cache_key_t k, QueryStats &stats) {
     bool missed = false;
@@ -60,9 +65,9 @@ private:
 
 public:
   CacheRunner(std::string name, std::unique_ptr<ICache> cache, uint64_t secret,
-              size_t num_threads)
+              size_t num_threads, scale_policy sp, double cap_prop)
       : name(name), cache(std::move(cache)), secret(secret),
-        num_threads(num_threads) {}
+        num_threads(num_threads), sp(sp), cap_prop(cap_prop) {}
   // TODO: runtime polymorphism has overhead.
   // Although this might be better actually.
   // Avoid compiler inlining function or anything specific
@@ -88,8 +93,16 @@ public:
             [&](size_t tid) {
               start_barrier.arrive_and_wait();
               auto start = std::chrono::high_resolution_clock::now();
-              for (size_t j = tid; j < buf.size(); j += num_threads) {
-                do_query(buf[j], stats[tid]);
+              if (sp == scale_policy::INTERLEAVE) {
+                for (size_t j = tid; j < buf.size(); j += num_threads) {
+                  do_query(buf[j], stats[tid]);
+                }
+              } else if (sp == scale_policy::TRANSFORM_SPACE) {
+                for (size_t j = 0; j < buf.size(); j++) {
+                  cache_key_t k = buf[j];
+                  k = get_token_from_secret(k, tid);
+                  do_query(k, stats[tid]);
+                }
               }
               auto end = std::chrono::high_resolution_clock::now();
               end_barrier.arrive_and_wait();
@@ -129,4 +142,5 @@ public:
   std::string_view get_name() const { return name; }
   size_t get_threads() const { return num_threads; }
   size_t get_cap() const { return cache->get_cap(); }
+  double get_cap_prop() const { return cap_prop; }
 };
