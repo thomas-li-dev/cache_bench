@@ -1,6 +1,6 @@
 CXX      := g++
 CXXFLAGS := -Wall -Wextra -O2 -std=c++23 -MMD -MP
-LDFLAGS  :=
+LDFLAGS  := -lboost_thread -lpthread
 
 TARGET := cache_bench
 

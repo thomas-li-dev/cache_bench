@@ -49,8 +49,6 @@ private:
   std::vector<std::pair<std::string, std::unique_ptr<ITrace>>> traces;
   uint64_t secret = std::random_device()();
 
-  // TODO: convex hull!!!
-  const double miss_cost = 1e6; // 1e6ns = 1 ms
   std::vector<size_t> threads_choices, cap_choices;
 
 public:
@@ -73,7 +71,7 @@ public:
 
       // choose batch size to be something that fits in memory, but reasonably
       // big as we allocate resources for each batch like jsons, threads, etc.
-      const size_t batch_size = 1e5, total_queries = 1e6;
+      const size_t batch_size = 1e6, total_queries = 1e7;
       // we only use vector as a RAII container for this buffer
       // shouldn't reallocate ever.
       std::vector<cache_key_t> buf(batch_size);
@@ -93,16 +91,12 @@ public:
         std::span<cache_key_t> span(buf.data(), siz);
         for (auto &cache : caches) {
           QueryStats stats = cache.do_queries(span);
-          double cost =
-              1.0 * stats.runtime.count() / stats.queries +
-              1.0 * (stats.queries - stats.hits) / stats.queries * miss_cost;
           nlohmann::json results;
           results["hit_rate"] = 1.0 * stats.hits / stats.queries;
           results["avg_latency_ns"] =
               1.0 * stats.runtime.count() / stats.queries;
           results["throughput_qps"] =
               1.0 * stats.queries / stats.runtime.count() * 1e9;
-          results["cost_ns"] = cost;
           // std::println("batch results: {}", batch_results.dump());
 
           // maybe better for trace to be first dim?
@@ -120,6 +114,8 @@ public:
   template <class T, class... Args>
   void add_cache(const std::string &name, Args &&...args) {
     for (size_t threads : threads_choices) {
+      if (threads > 1 && !T::can_multithread())
+        continue;
       for (size_t cap : cap_choices) {
         caches.push_back(
             CacheRunner(name, std::make_unique<T>(cap), secret, threads));

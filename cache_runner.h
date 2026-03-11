@@ -10,8 +10,8 @@
 // TODO: do we need bench -> cacherunner -> cache?
 // maybe combining first two is better?
 struct QueryStats {
-  std::chrono::duration<double, std::nano> runtime;
-  size_t queries, hits;
+  std::chrono::duration<double, std::nano> runtime{};
+  size_t queries{}, hits{};
 };
 class CacheRunner {
 private:
@@ -52,46 +52,62 @@ public:
   // to the testing framework. (like using the fact we run this repeatedly)
 
   QueryStats do_queries(std::span<cache_key_t> buf) {
-    std::vector<std::thread> threads;
-    std::vector<QueryStats> stats(num_threads);
-    std::chrono::time_point<std::chrono::high_resolution_clock> rt_start,
-        rt_end;
-    auto on_start = [&]() {
-      rt_start = std::chrono::high_resolution_clock::now();
-    };
-    auto on_end = [&]() { rt_end = std::chrono::high_resolution_clock::now(); };
-    std::barrier start_barrier(num_threads, on_start);
-    std::barrier end_barrier(num_threads, on_end);
-    for (size_t i = 0; i < num_threads; i++) {
-      threads.push_back(std::thread(
-          [&](size_t tid) {
-            start_barrier.arrive_and_wait();
-            auto start = std::chrono::high_resolution_clock::now();
-            for (size_t j = tid; j < buf.size(); j += num_threads) {
-              stats[tid].queries++;
-              bool hit = do_query(buf[j]);
-              stats[tid].hits += hit;
-            }
-            auto end = std::chrono::high_resolution_clock::now();
-            end_barrier.arrive_and_wait();
-            stats[tid].runtime =
-                std::chrono::duration<double, std::milli>(end - start);
-          },
-          i));
-    }
-    for (auto &thread : threads) {
-      thread.join();
-    }
-    QueryStats total_stats{};
+    if (num_threads > 1) {
+      std::vector<std::thread> threads;
+      std::vector<QueryStats> stats(num_threads);
+      std::chrono::time_point<std::chrono::high_resolution_clock> rt_start,
+          rt_end;
+      auto on_start = [&]() {
+        rt_start = std::chrono::high_resolution_clock::now();
+      };
+      auto on_end = [&]() {
+        rt_end = std::chrono::high_resolution_clock::now();
+      };
+      std::barrier start_barrier(num_threads, on_start);
+      std::barrier end_barrier(num_threads, on_end);
+      for (size_t i = 0; i < num_threads; i++) {
+        threads.push_back(std::thread(
+            [&](size_t tid) {
+              start_barrier.arrive_and_wait();
+              auto start = std::chrono::high_resolution_clock::now();
+              for (size_t j = tid; j < buf.size(); j += num_threads) {
+                stats[tid].queries++;
+                bool hit = do_query(buf[j]);
+                stats[tid].hits += hit;
+              }
+              auto end = std::chrono::high_resolution_clock::now();
+              end_barrier.arrive_and_wait();
+              stats[tid].runtime =
+                  std::chrono::duration<double, std::nano>(end - start);
+            },
+            i));
+      }
+      for (auto &thread : threads) {
+        thread.join();
+      }
+      QueryStats total_stats;
 
-    // runtime is the "real time" like in time cmd
-    total_stats.runtime =
-        std::chrono::duration<double, std::milli>(rt_end - rt_start);
-    for (size_t i = 0; i < num_threads; i++) {
-      total_stats.queries += stats[i].queries;
-      total_stats.hits += stats[i].hits;
+      // runtime is the "real time" like in time cmd
+      total_stats.runtime =
+          std::chrono::duration<double, std::nano>(rt_end - rt_start);
+      for (size_t i = 0; i < num_threads; i++) {
+        total_stats.queries += stats[i].queries;
+        total_stats.hits += stats[i].hits;
+      }
+      return total_stats;
+    } else {
+      // special path for single thread.
+      QueryStats stats;
+      auto start = std::chrono::high_resolution_clock::now();
+      for (size_t j = 0; j < buf.size(); j += num_threads) {
+        stats.queries++;
+        bool hit = do_query(buf[j]);
+        stats.hits += hit;
+      }
+      auto end = std::chrono::high_resolution_clock::now();
+      stats.runtime = std::chrono::duration<double, std::nano>(end - start);
+      return stats;
     }
-    return total_stats;
   }
   std::string_view get_name() const { return name; }
   size_t get_threads() const { return num_threads; }

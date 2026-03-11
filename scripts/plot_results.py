@@ -64,7 +64,6 @@ def aggregate_by_cache_trace_thread_capacity(records: list[dict]) -> list[dict]:
                 "hit_rate_mean": mean(r["hit_rate"] for r in rows),
                 "avg_latency_ns_mean": mean(r["avg_latency_ns"] for r in rows),
                 "throughput_qps_mean": mean(r["throughput_qps"] for r in rows),
-                "cost_ns_mean": mean(r["cost_ns"] for r in rows),
             }
         )
     return out
@@ -80,7 +79,6 @@ def write_summary_csv(rows: list[dict], out_path: Path) -> None:
         "hit_rate_mean",
         "avg_latency_ns_mean",
         "throughput_qps_mean",
-        "cost_ns_mean",
     ]
     with out_path.open("w", encoding="utf-8") as f:
         f.write(",".join(headers) + "\n")
@@ -96,7 +94,6 @@ def write_summary_csv(rows: list[dict], out_path: Path) -> None:
                         f"{r['hit_rate_mean']:.8f}",
                         f"{r['avg_latency_ns_mean']:.8f}",
                         f"{r['throughput_qps_mean']:.8f}",
-                        f"{r['cost_ns_mean']:.8f}",
                     ]
                 )
                 + "\n"
@@ -238,7 +235,6 @@ def main() -> None:
     plot_aggregate_vs_threads(
         summary, output_dir, metric="avg_latency_ns_mean", ylabel="avg latency (ns)"
     )
-    plot_aggregate_vs_threads(summary, output_dir, metric="cost_ns_mean", ylabel="cost (ns)")
     plot_aggregate_vs_threads(summary, output_dir, metric="hit_rate_mean", ylabel="hit rate")
 
     plot_aggregate_vs_capacity(
@@ -246,9 +242,6 @@ def main() -> None:
     )
     plot_aggregate_vs_capacity(
         summary, output_dir, metric="avg_latency_ns_mean", ylabel="avg latency (ns)"
-    )
-    plot_aggregate_vs_capacity(
-        summary, output_dir, metric="cost_ns_mean", ylabel="cost (ns)"
     )
     plot_aggregate_vs_capacity(summary, output_dir, metric="hit_rate_mean", ylabel="hit rate")
 
@@ -258,7 +251,6 @@ def main() -> None:
     plot_batch_series(
         records, output_dir, metric="avg_latency_ns", ylabel="avg latency (ns)"
     )
-    plot_batch_series(records, output_dir, metric="cost_ns", ylabel="cost (ns)")
 
     print(f"Wrote plots and summary to: {output_dir}")
 

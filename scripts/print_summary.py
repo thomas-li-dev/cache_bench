@@ -38,15 +38,14 @@ def main() -> None:
         ].append(r)
 
     print(
-        "cache_name,trace_name,threads,capacity,batches,hit_rate_mean,avg_latency_ns_mean,throughput_qps_mean,cost_ns_mean"
+        "cache_name,trace_name,threads,capacity,batches,hit_rate_mean,avg_latency_ns_mean,throughput_qps_mean"
     )
     for (cache, trace, threads, capacity), recs in sorted(groups.items()):
         print(
             f"{cache},{trace},{threads},{capacity},{len(recs)},"
             f"{mean(r['hit_rate'] for r in recs):.6f},"
             f"{mean(r['avg_latency_ns'] for r in recs):.3f},"
-            f"{mean(r['throughput_qps'] for r in recs):.3f},"
-            f"{mean(r['cost_ns'] for r in recs):.3f}"
+            f"{mean(r['throughput_qps'] for r in recs):.3f}"
         )
 
 

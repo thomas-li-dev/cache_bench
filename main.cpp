@@ -8,7 +8,7 @@
 const std::string twi_trace_location = "twi_traces/";
 int main() {
   std::vector<size_t> threads_choices = {1, 2, 4, 8};
-  std::vector<size_t> cap_choices = {1 << 9, 1 << 10, 1 << 11, 1 << 12};
+  std::vector<size_t> cap_choices = {1 << 14, 1 << 15, 1 << 16};
   Bench b(threads_choices, cap_choices);
   b.add_cache<FIFO>("FIFO");
   b.add_cache<LRU>("LRU");
