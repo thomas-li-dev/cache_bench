@@ -14,17 +14,34 @@
 
 class Bench {
 private:
-  std::vector<CacheRunner> caches;
+  struct CacheMaker {
+    std::string name;
+    std::function<std::unique_ptr<ICache>(size_t)> maker;
+  };
+  std::vector<CacheMaker> cache_makers;
   std::vector<Trace> traces;
   uint64_t secret = std::random_device()();
 
-  std::vector<size_t> threads_choices, cap_choices;
+  std::vector<size_t> threads_choices;
+  std::vector<double> cap_prop;
 
 public:
   Bench(const std::vector<size_t> &threads_choices,
-        const std::vector<size_t> &cap_choices)
-      : threads_choices(threads_choices), cap_choices(cap_choices) {}
+        const std::vector<double> &cap_prop)
+      : threads_choices(threads_choices), cap_prop(cap_prop) {}
   void run() {
+    // calibrate TSC frequency first.
+    // could do with syscall?
+    auto start = std::chrono::high_resolution_clock::now();
+    uint64_t tsc_start = __rdtsc();
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    uint64_t tsc_end = __rdtsc();
+    auto end = std::chrono::high_resolution_clock::now();
+
+    double ns = std::chrono::duration<double, std::nano>(end - start).count();
+    double tsc_freq_ghz = (tsc_end - tsc_start) / ns; // cycles per ns
+    std::println("tsc {}", tsc_freq_ghz);
+
     // for each cache & num threads & capacity (cache options)
     // for each trace
     // for each batch
@@ -32,8 +49,15 @@ public:
     std::ofstream out("results.json");
 
     for (auto &trace : traces) {
-      for (auto &cache : caches) {
-        cache.reset();
+      size_t siz = trace.get_working_set_size();
+      std::vector<CacheRunner> caches;
+      for (double prop : cap_prop) {
+        size_t cap = ceil(prop * siz);
+        for (size_t num_threads : threads_choices) {
+          for (auto &[name, maker] : cache_makers)
+            caches.push_back(
+                CacheRunner{name, maker(cap), secret, num_threads});
+        }
       }
       std::println("running trace {}", trace.get_name());
       std::vector<cache_key_t> buf;
@@ -48,6 +72,8 @@ public:
             "loaded queries into buf in {} ms",
             std::chrono::duration<double, std::milli>(end - start).count());
         for (auto &cache : caches) {
+          std::println("starting cache {} {} {}", cache.get_name(),
+                       cache.get_cap(), cache.get_threads());
           QueryStats stats = cache.do_queries(buf);
           nlohmann::json results;
           results["hit_rate"] = 1.0 * stats.hits / stats.queries;
@@ -55,9 +81,12 @@ public:
               1.0 * stats.runtime.count() / stats.queries;
           results["throughput_qps"] =
               1.0 * stats.queries / stats.runtime.count() * 1e9;
-          // std::println("batch results: {}", batch_results.dump());
+          std::vector<double> samples_ns;
+          for (auto &cycs : stats.samples) {
+            samples_ns.push_back(cycs / tsc_freq_ghz);
+          }
+          results["samples"] = samples_ns;
 
-          // maybe better for trace to be first dim?
           results["cache_name"] = cache.get_name();
           results["trace_name"] = trace.get_name();
           results["threads"] = cache.get_threads();
@@ -69,18 +98,14 @@ public:
     }
   }
 
+  // TODO: support args
   template <class T, class... Args>
   void add_cache(const std::string &name, Args &&...args) {
-    for (size_t threads : threads_choices) {
-      if (threads > 1 && !T::can_multithread())
-        continue;
-      for (size_t cap : cap_choices) {
-        caches.push_back(
-            CacheRunner(name, std::make_unique<T>(cap), secret, threads));
-      }
-    }
+    cache_makers.push_back(
+        {name, [](size_t cap) { return std::make_unique<T>(cap); }});
   }
-  void add_trace(const std::string &name, const fs::path &path) {
-    traces.push_back({name, path});
+  void add_trace(const std::string &name, const fs::path &path,
+                 size_t max_blocks = -1) {
+    traces.push_back({name, path, max_blocks});
   }
 };

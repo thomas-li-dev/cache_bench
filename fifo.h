@@ -1,13 +1,11 @@
 #pragma once
 #include "cache.h"
 #include "types.h"
-#include <atomic>
 #include <boost/unordered/concurrent_flat_map.hpp>
 #include <cassert>
 #include <functional>
 #include <list>
 #include <mutex>
-#include <queue>
 
 using namespace boost::unordered;
 class FIFO : public ICache {
@@ -16,7 +14,7 @@ private:
   std::list<cache_key_t> ord;
   concurrent_flat_map<cache_key_t, cache_token_t> map;
   std::mutex mut;
-  std::atomic<int64_t> approx_siz;
+  size_t siz{};
 
 public:
   FIFO(size_t cap) : cap(cap) {}
@@ -29,38 +27,22 @@ public:
     if (hit)
       return t;
     t = get_token(k);
-    mut.lock();
+    std::lock_guard lock{mut};
     auto itr = ord.insert(ord.end(), k);
-    mut.unlock();
     bool inserted = map.try_emplace(k, t);
     if (!inserted) {
-      // another thread inserted k
-      // before us
-      mut.lock();
       ord.erase(itr);
-      mut.unlock();
       return t;
     }
-    // this is only a rough approximation,
-    // so relaxed ordering is fine.
-    size_t cur = approx_siz.fetch_add(1, std::memory_order::relaxed) + 1;
-    if (cur > cap) {
-      mut.lock();
-      while (approx_siz.load(std::memory_order::relaxed) > cap) {
-        auto k = ord.front();
-        ord.pop_front();
-        size_t did = map.erase(k);
-        if (did)
-          approx_siz.fetch_sub(1, std::memory_order::relaxed);
-      }
-      mut.unlock();
+    siz++;
+    while (siz > cap) {
+      auto victim = ord.front();
+      ord.pop_front();
+      if (map.erase(victim))
+        siz--;
     }
     return t;
   }
   virtual size_t get_cap() const override { return cap; }
   static bool can_multithread() { return true; }
-  void reset() override {
-    map.clear();
-    ord.clear();
-  }
 };

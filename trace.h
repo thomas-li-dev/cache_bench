@@ -1,4 +1,5 @@
 #pragma once
+#include "ext/json.hpp"
 #include "types.h"
 #include <algorithm>
 #include <cassert>
@@ -15,16 +16,22 @@ struct Metadata {
 
 class Trace {
 private:
-  std::vector<fs::path> blocks;
-  size_t nxt_blk{};
   std::string name;
+  std::vector<fs::path> blocks;
+  size_t nxt_blk{}, max_blocks, working_set_size;
 
 public:
-  Trace(const std::string &name, const fs::path &path) : name(name) {
+  Trace(const std::string &name, const fs::path &path, size_t max_blocks)
+      : name(name), max_blocks(max_blocks) {
+    auto meta_path = path / "meta.json";
+    std::ifstream meta_file{meta_path};
+    nlohmann::json meta;
+    meta_file >> meta;
+    working_set_size = meta["uniq_keys"];
+
     for (auto &file : fs::directory_iterator{path}) {
       std::string name = file.path().filename();
       if (name.ends_with(".trace")) {
-        std::println("adding {}", name);
         blocks.push_back(file.path());
       }
     }
@@ -32,7 +39,7 @@ public:
   }
   // put the next block into the buffer
   void next_block(std::vector<cache_key_t> &buf) {
-    if (nxt_blk == blocks.size()) {
+    if (nxt_blk == std::min(blocks.size(), max_blocks)) {
       // signal end
       buf.clear();
       return;
@@ -42,6 +49,7 @@ public:
     // ate seeks to end, so tellg gives the size.
     size_t size = file.tellg();
     file.seekg(0);
+    // TODO: use this for smth
     Metadata meta;
     file.read((char *)&meta, sizeof(Metadata));
     size_t num_queries = (size - sizeof(Metadata)) / sizeof(cache_key_t);
@@ -49,4 +57,5 @@ public:
     file.read((char *)buf.data(), num_queries * sizeof(cache_key_t));
   }
   std::string get_name() { return name; }
+  size_t get_working_set_size() { return working_set_size; }
 };

@@ -48,8 +48,4 @@ public:
   }
   virtual size_t get_cap() const override { return cap; }
   static bool can_multithread() { return true; }
-  void reset() override {
-    map.clear();
-    order.clear();
-  }
 };

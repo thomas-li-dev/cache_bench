@@ -4,6 +4,7 @@ import json
 from collections import defaultdict
 from pathlib import Path
 from statistics import mean
+import numpy as np
 
 try:
     import matplotlib.pyplot as plt
@@ -54,6 +55,14 @@ def aggregate_by_cache_trace_thread_capacity(records: list[dict]) -> list[dict]:
 
     out: list[dict] = []
     for (cache, trace, threads, capacity), rows in sorted(groups.items()):
+        all_samples = []
+        for r in rows:
+            all_samples.extend(r.get("samples", []))
+        percentiles = {}
+        if all_samples:
+            arr = np.array(all_samples)
+            for p in [50, 90, 95, 99]:
+                percentiles[f"p{p}_latency_ns"] = float(np.percentile(arr, p))
         out.append(
             {
                 "cache_name": cache,
@@ -64,6 +73,7 @@ def aggregate_by_cache_trace_thread_capacity(records: list[dict]) -> list[dict]:
                 "hit_rate_mean": mean(r["hit_rate"] for r in rows),
                 "avg_latency_ns_mean": mean(r["avg_latency_ns"] for r in rows),
                 "throughput_qps_mean": mean(r["throughput_qps"] for r in rows),
+                **percentiles,
             }
         )
     return out
@@ -79,6 +89,10 @@ def write_summary_csv(rows: list[dict], out_path: Path) -> None:
         "hit_rate_mean",
         "avg_latency_ns_mean",
         "throughput_qps_mean",
+        "p50_latency_ns",
+        "p90_latency_ns",
+        "p95_latency_ns",
+        "p99_latency_ns",
     ]
     with out_path.open("w", encoding="utf-8") as f:
         f.write(",".join(headers) + "\n")
@@ -94,6 +108,10 @@ def write_summary_csv(rows: list[dict], out_path: Path) -> None:
                         f"{r['hit_rate_mean']:.8f}",
                         f"{r['avg_latency_ns_mean']:.8f}",
                         f"{r['throughput_qps_mean']:.8f}",
+                        f"{r.get('p50_latency_ns', ''):.8f}" if 'p50_latency_ns' in r else "",
+                        f"{r.get('p90_latency_ns', ''):.8f}" if 'p90_latency_ns' in r else "",
+                        f"{r.get('p95_latency_ns', ''):.8f}" if 'p95_latency_ns' in r else "",
+                        f"{r.get('p99_latency_ns', ''):.8f}" if 'p99_latency_ns' in r else "",
                     ]
                 )
                 + "\n"
@@ -207,6 +225,123 @@ def plot_batch_series(records: list[dict], output_dir: Path, metric: str, ylabel
         plt.close()
 
 
+def plot_latency_percentiles_vs_threads(
+    rows: list[dict], output_dir: Path
+) -> None:
+    percentile_keys = ["p50_latency_ns", "p90_latency_ns", "p95_latency_ns", "p99_latency_ns"]
+    by_trace: dict[str, list[dict]] = defaultdict(list)
+    for r in rows:
+        by_trace[r["trace_name"]].append(r)
+
+    for trace, trace_rows in by_trace.items():
+        by_capacity: dict[int, list[dict]] = defaultdict(list)
+        for r in trace_rows:
+            by_capacity[int(r["capacity"])].append(r)
+
+        for capacity, cap_rows in sorted(by_capacity.items()):
+            plt.figure(figsize=(10, 6))
+            by_cache: dict[str, list[dict]] = defaultdict(list)
+            for r in cap_rows:
+                if "p50_latency_ns" in r:
+                    by_cache[r["cache_name"]].append(r)
+
+            for cache, cache_rows in sorted(by_cache.items()):
+                cache_rows.sort(key=lambda x: x["threads"])
+                xs = [r["threads"] for r in cache_rows]
+                for pk in percentile_keys:
+                    ys = [r[pk] for r in cache_rows]
+                    plt.plot(xs, ys, marker="o", label=f"{cache} {pk.split('_')[0]}")
+
+            plt.title(f"{trace}: latency percentiles vs threads (cap={capacity})")
+            plt.xlabel("threads")
+            plt.ylabel("latency (ns)")
+            plt.grid(True, alpha=0.3)
+            plt.legend(fontsize="small")
+            plt.tight_layout()
+            plt.savefig(
+                output_dir / f"latency_pct_{trace}_cap{capacity}_vs_threads.png",
+                dpi=140,
+            )
+            plt.close()
+
+
+def plot_latency_percentiles_vs_capacity(
+    rows: list[dict], output_dir: Path
+) -> None:
+    percentile_keys = ["p50_latency_ns", "p90_latency_ns", "p95_latency_ns", "p99_latency_ns"]
+    by_trace: dict[str, list[dict]] = defaultdict(list)
+    for r in rows:
+        by_trace[r["trace_name"]].append(r)
+
+    for trace, trace_rows in by_trace.items():
+        by_threads: dict[int, list[dict]] = defaultdict(list)
+        for r in trace_rows:
+            by_threads[int(r["threads"])].append(r)
+
+        for threads, t_rows in sorted(by_threads.items()):
+            plt.figure(figsize=(10, 6))
+            by_cache: dict[str, list[dict]] = defaultdict(list)
+            for r in t_rows:
+                if "p50_latency_ns" in r:
+                    by_cache[r["cache_name"]].append(r)
+
+            for cache, cache_rows in sorted(by_cache.items()):
+                cache_rows.sort(key=lambda x: x["capacity"])
+                xs = [r["capacity"] for r in cache_rows]
+                for pk in percentile_keys:
+                    ys = [r[pk] for r in cache_rows]
+                    plt.plot(xs, ys, marker="o", label=f"{cache} {pk.split('_')[0]}")
+
+            plt.title(f"{trace}: latency percentiles vs capacity (threads={threads})")
+            plt.xlabel("capacity")
+            plt.ylabel("latency (ns)")
+            plt.grid(True, alpha=0.3)
+            plt.legend(fontsize="small")
+            plt.tight_layout()
+            plt.savefig(
+                output_dir / f"latency_pct_{trace}_thr{threads}_vs_capacity.png",
+                dpi=140,
+            )
+            plt.close()
+
+
+def plot_latency_boxplots(records: list[dict], output_dir: Path) -> None:
+    by_trace: dict[str, list[dict]] = defaultdict(list)
+    for r in records:
+        by_trace[r["trace_name"]].append(r)
+
+    for trace, trace_rows in by_trace.items():
+        by_threads: dict[int, list[dict]] = defaultdict(list)
+        for r in trace_rows:
+            by_threads[int(r["threads"])].append(r)
+
+        for threads, t_rows in sorted(by_threads.items()):
+            by_cache_cap: dict[tuple[str, int], list[float]] = defaultdict(list)
+            for r in t_rows:
+                for s in r.get("samples", []):
+                    by_cache_cap[(r["cache_name"], int(r["capacity"]))].append(s)
+
+            if not by_cache_cap:
+                continue
+
+            labels = sorted(by_cache_cap.keys())
+            data = [by_cache_cap[k] for k in labels]
+            tick_labels = [f"{c}\ncap={cap}" for c, cap in labels]
+
+            plt.figure(figsize=(max(8, len(labels) * 1.2), 6))
+            plt.boxplot(data, labels=tick_labels, showfliers=False)
+            plt.title(f"{trace}: latency distribution (threads={threads})")
+            plt.ylabel("latency (ns)")
+            plt.xticks(rotation=45, ha="right", fontsize="small")
+            plt.grid(True, alpha=0.3, axis="y")
+            plt.tight_layout()
+            plt.savefig(
+                output_dir / f"latency_box_{trace}_thr{threads}.png",
+                dpi=140,
+            )
+            plt.close()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Plot cache benchmark JSONL results.")
     parser.add_argument(
@@ -251,6 +386,10 @@ def main() -> None:
     plot_batch_series(
         records, output_dir, metric="avg_latency_ns", ylabel="avg latency (ns)"
     )
+
+    plot_latency_percentiles_vs_threads(summary, output_dir)
+    plot_latency_percentiles_vs_capacity(summary, output_dir)
+    plot_latency_boxplots(records, output_dir)
 
     print(f"Wrote plots and summary to: {output_dir}")
 

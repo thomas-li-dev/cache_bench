@@ -4,6 +4,7 @@ import json
 from collections import defaultdict
 from pathlib import Path
 from statistics import mean
+import numpy as np
 
 
 def load_records(path: Path) -> list[dict]:
@@ -38,14 +39,25 @@ def main() -> None:
         ].append(r)
 
     print(
-        "cache_name,trace_name,threads,capacity,batches,hit_rate_mean,avg_latency_ns_mean,throughput_qps_mean"
+        "cache_name,trace_name,threads,capacity,batches,hit_rate_mean,"
+        "avg_latency_ns_mean,throughput_qps_mean,p50_ns,p90_ns,p95_ns,p99_ns"
     )
     for (cache, trace, threads, capacity), recs in sorted(groups.items()):
+        all_samples = []
+        for r in recs:
+            all_samples.extend(r.get("samples", []))
+        pcts = ""
+        if all_samples:
+            arr = np.array(all_samples)
+            pcts = ",".join(f"{np.percentile(arr, p):.3f}" for p in [50, 90, 95, 99])
+        else:
+            pcts = ",,,"
         print(
             f"{cache},{trace},{threads},{capacity},{len(recs)},"
             f"{mean(r['hit_rate'] for r in recs):.6f},"
             f"{mean(r['avg_latency_ns'] for r in recs):.3f},"
-            f"{mean(r['throughput_qps'] for r in recs):.3f}"
+            f"{mean(r['throughput_qps'] for r in recs):.3f},"
+            f"{pcts}"
         )
 
 

@@ -6,26 +6,42 @@
 #include <print>
 #include <span>
 #include <thread>
+#include <x86intrin.h>
 
 // TODO: do we need bench -> cacherunner -> cache?
 // maybe combining first two is better?
 struct QueryStats {
   std::chrono::duration<double, std::nano> runtime{};
   size_t queries{}, hits{};
+  // cycles
+  std::vector<uint64_t> samples;
 };
+
 class CacheRunner {
 private:
   std::string name;
   std::unique_ptr<ICache> cache;
   uint64_t secret;
   size_t num_threads;
-  bool do_query(cache_key_t k) {
-    // TODO: add sampling for latency.
+
+  void do_query(cache_key_t k, QueryStats &stats) {
     bool missed = false;
+    // sample every 1/1024 queries
+    bool sample = stats.queries++ % 1024 == 0;
+    uint64_t start_cyc, end_cyc;
+    if (sample) {
+      _mm_lfence();
+      start_cyc = __rdtsc();
+    }
     cache_token_t t = cache->query(k, [&](cache_key_t k) {
       missed = true;
       return get_token_from_secret(k, secret);
     });
+    if (sample) {
+      _mm_lfence();
+      end_cyc = __rdtsc();
+      stats.samples.push_back(end_cyc - start_cyc);
+    }
     cache_token_t expected = get_token_from_secret(k, secret);
 
     [[unlikely]]
@@ -38,7 +54,8 @@ private:
     // we don't know what cache does. If it
     // queries the token multiple times for some reason
     // we don't want to count multiple misses (debatable)
-    return !missed;
+    if (!missed)
+      stats.hits++;
   }
 
 public:
@@ -53,6 +70,7 @@ public:
 
   QueryStats do_queries(std::span<cache_key_t> buf) {
     if (num_threads > 1) {
+      // TODO: should probably pin threads?
       std::vector<std::thread> threads;
       std::vector<QueryStats> stats(num_threads);
       std::chrono::time_point<std::chrono::high_resolution_clock> rt_start,
@@ -71,9 +89,7 @@ public:
               start_barrier.arrive_and_wait();
               auto start = std::chrono::high_resolution_clock::now();
               for (size_t j = tid; j < buf.size(); j += num_threads) {
-                stats[tid].queries++;
-                bool hit = do_query(buf[j]);
-                stats[tid].hits += hit;
+                do_query(buf[j], stats[tid]);
               }
               auto end = std::chrono::high_resolution_clock::now();
               end_barrier.arrive_and_wait();
@@ -93,6 +109,9 @@ public:
       for (size_t i = 0; i < num_threads; i++) {
         total_stats.queries += stats[i].queries;
         total_stats.hits += stats[i].hits;
+        total_stats.samples.insert(total_stats.samples.end(),
+                                   stats[i].samples.begin(),
+                                   stats[i].samples.end());
       }
       return total_stats;
     } else {
@@ -100,9 +119,7 @@ public:
       QueryStats stats;
       auto start = std::chrono::high_resolution_clock::now();
       for (size_t j = 0; j < buf.size(); j += num_threads) {
-        stats.queries++;
-        bool hit = do_query(buf[j]);
-        stats.hits += hit;
+        do_query(buf[j], stats);
       }
       auto end = std::chrono::high_resolution_clock::now();
       stats.runtime = std::chrono::duration<double, std::nano>(end - start);
@@ -112,5 +129,4 @@ public:
   std::string_view get_name() const { return name; }
   size_t get_threads() const { return num_threads; }
   size_t get_cap() const { return cache->get_cap(); }
-  void reset() { cache->reset(); }
 };

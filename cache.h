@@ -13,5 +13,4 @@ public:
 
   // so ugly.
   virtual size_t get_cap() const = 0;
-  virtual void reset() = 0;
 };
