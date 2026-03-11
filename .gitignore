@@ -1,9 +1,12 @@
 cache_bench
 cache_bench_debug
+preprocess
+preprocess_debug
 *.o
 *.d
 compile_commands.json
 twi_traces/
+twi_proc/
 .cache/
 plots/
 results.json

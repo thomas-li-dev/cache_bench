@@ -112,4 +112,5 @@ public:
   std::string_view get_name() const { return name; }
   size_t get_threads() const { return num_threads; }
   size_t get_cap() const { return cache->get_cap(); }
+  void reset() { cache->reset(); }
 };

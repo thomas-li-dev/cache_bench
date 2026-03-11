@@ -2,17 +2,15 @@
 #include "bench.h"
 #include "fifo.h"
 #include "lru.h"
-#include "twi_trace.h"
-#include <fcntl.h>
 
-const std::string twi_trace_location = "twi_traces/";
+const std::string twi_trace_location = "twi_proc/";
 int main() {
   std::vector<size_t> threads_choices = {1, 2, 4, 8};
   std::vector<size_t> cap_choices = {1 << 14, 1 << 15, 1 << 16};
   Bench b(threads_choices, cap_choices);
   b.add_cache<FIFO>("FIFO");
   b.add_cache<LRU>("LRU");
-  b.add_cache<BadCache>("BadCache");
-  b.add_trace<TwiTrace>("twitter", twi_trace_location);
+  // b.add_cache<BadCache>("BadCache");
+  b.add_trace("twitter", twi_trace_location);
   b.run();
 }

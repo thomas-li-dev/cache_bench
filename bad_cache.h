@@ -16,4 +16,5 @@ public:
   }
   virtual size_t get_cap() const override { return cap_; }
   static bool can_multithread() { return true; }
+  void reset() override {}
 };

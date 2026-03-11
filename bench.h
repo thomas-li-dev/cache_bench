@@ -12,41 +12,10 @@
 #include <random>
 #include <vector>
 
-// TODO: add multithreading
-// one method: generate a trace for each thread
-// all threads share a cache.
-// question: how to measure? should
-// we care about internal part measurements?
-// I think not, since not every algo would follow this process
-// and with concurrency we might have to make the steps more coupled
-
-// TODO: another issue: our measurements
-// assume reasonable cache impl
-// if a cache impl doesn't cache anything, then
-// it'll be the fastest.
-// in practice the performance is related to having
-// a good miss ratio.
-
-// idea: assign a "cost" to each miss. Make the cache
-// return a token associated with the key.
-// then the cost of a cache depends on the miss rate and its own performance
-// then we can also verify the correctness of the cache.
-// we can then find for each cache, whether it would be on the convex hull
-// of the combined metric (for some miss cost)
-
-// can enforce memory as well with allocator?
-
-// we need to work with semi-adversarial cache impls, as there could be bugs.
-
-// other issue is the performance of cache could be determined mostly by
-// hash table perf, which isn't interesting.
-// Kind of the reason we wanted to measure parts separately.
-// maybe look separately at hit / miss performance.
-
 class Bench {
 private:
   std::vector<CacheRunner> caches;
-  std::vector<std::pair<std::string, std::unique_ptr<ITrace>>> traces;
+  std::vector<Trace> traces;
   uint64_t secret = std::random_device()();
 
   std::vector<size_t> threads_choices, cap_choices;
@@ -62,35 +31,24 @@ public:
     // put stats
     std::ofstream out("results.json");
 
-    for (auto &[trace_name, trace] : traces) {
-      std::println("running trace {}", trace_name);
-      // TODO: make configurable.
-      // probably queries should be configured by the
-      // trace parameters (and having to_buf return empty once hitting
-      // configured num)
-
-      // choose batch size to be something that fits in memory, but reasonably
-      // big as we allocate resources for each batch like jsons, threads, etc.
-      const size_t batch_size = 1e6, total_queries = 1e7;
-      // we only use vector as a RAII container for this buffer
-      // shouldn't reallocate ever.
-      std::vector<cache_key_t> buf(batch_size);
-      for (size_t num_done = 0, siz; num_done < total_queries;) {
-        std::println("batch {} start", num_done / batch_size);
+    for (auto &trace : traces) {
+      for (auto &cache : caches) {
+        cache.reset();
+      }
+      std::println("running trace {}", trace.get_name());
+      std::vector<cache_key_t> buf;
+      for (size_t batch = 0;; batch++) {
         auto start = std::chrono::high_resolution_clock::now();
-        siz = trace->next_buf(buf);
+        trace.next_block(buf);
         auto end = std::chrono::high_resolution_clock::now();
+        if (buf.empty())
+          break;
+        std::println("batch {} start", batch);
         std::println(
             "loaded queries into buf in {} ms",
             std::chrono::duration<double, std::milli>(end - start).count());
-        size_t rem = total_queries - num_done;
-        if (!siz)
-          break;
-        siz = std::min(siz, rem);
-        num_done += siz;
-        std::span<cache_key_t> span(buf.data(), siz);
         for (auto &cache : caches) {
-          QueryStats stats = cache.do_queries(span);
+          QueryStats stats = cache.do_queries(buf);
           nlohmann::json results;
           results["hit_rate"] = 1.0 * stats.hits / stats.queries;
           results["avg_latency_ns"] =
@@ -101,9 +59,9 @@ public:
 
           // maybe better for trace to be first dim?
           results["cache_name"] = cache.get_name();
-          results["trace_name"] = trace_name;
+          results["trace_name"] = trace.get_name();
           results["threads"] = cache.get_threads();
-          results["batch"] = num_done / batch_size;
+          results["batch"] = batch;
           results["capacity"] = cache.get_cap();
           out << results.dump() << "\n";
         }
@@ -122,8 +80,7 @@ public:
       }
     }
   }
-  template <class T, class... Args>
-  void add_trace(const std::string &name, Args &&...args) {
-    traces.push_back({name, std::make_unique<T>(args...)});
+  void add_trace(const std::string &name, const fs::path &path) {
+    traces.push_back({name, path});
   }
 };

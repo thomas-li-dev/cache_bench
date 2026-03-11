@@ -6,7 +6,7 @@ TARGET := cache_bench
 
 # Recursively collect C++ sources from subdirectories.
 rwildcard = $(foreach d,$(wildcard $(1)/*),$(call rwildcard,$(d),$(2)) $(filter $(subst *,%,$(2)),$(d)))
-SRCS := $(sort $(call rwildcard,.,*.cpp))
+SRCS := $(filter-out ./preprocess/%, $(sort $(call rwildcard,.,*.cpp)))
 OBJS := $(SRCS:.cpp=.o)
 DEPS := $(OBJS:.o=.d)
 
