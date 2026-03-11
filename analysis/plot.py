@@ -120,8 +120,8 @@ def main() -> None:
     p = argparse.ArgumentParser(
         description="Plot SIEVE figure 3c and 3f from a JSON results file"
     )
-    p.add_argument("--input", default="results/hit_rate.json", help="Input JSON")
-    p.add_argument("--output", default="results/hit_rate.pdf", help="Output PDF path")
+    p.add_argument("--input", default="results/cdn_hit_rate.json", help="Input JSON")
+    p.add_argument("--output", default="results/cdn_hit_rate.pdf", help="Output PDF path")
     args = p.parse_args()
 
     data = _load(Path(args.input))
