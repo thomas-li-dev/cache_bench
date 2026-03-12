@@ -19,7 +19,7 @@ struct QueryStats {
   std::vector<uint64_t> samples;
 };
 
-enum class scale_policy { INTERLEAVE = 0, TRANSFORM_SPACE = 1 };
+enum class scale_policy { INTERLEAVE = 0, TRANSFORM_SPACE = 1, REPLICATE = 2 };
 
 class CacheRunner {
 private:
@@ -107,6 +107,10 @@ public:
                   k = get_token_from_secret(k, tid);
                   do_query(k, stats[tid]);
                 }
+              } else if (sp == scale_policy::REPLICATE) {
+                for (size_t j = 0; j < buf.size(); j++) {
+                  do_query(buf[j], stats[tid]);
+                }
               }
               auto end = std::chrono::high_resolution_clock::now();
               end_barrier.arrive_and_wait();
@@ -147,4 +151,13 @@ public:
   size_t get_threads() const { return num_threads; }
   size_t get_cap() const { return cache->get_cap(); }
   double get_cap_prop() const { return cap_prop; }
+  scale_policy get_scale_policy() const { return sp; }
+  std::string_view get_scale_policy_name() const {
+    switch (sp) {
+    case scale_policy::INTERLEAVE: return "interleave";
+    case scale_policy::TRANSFORM_SPACE: return "transform_space";
+    case scale_policy::REPLICATE: return "replicate";
+    }
+    return "unknown";
+  }
 };

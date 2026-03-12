@@ -24,12 +24,14 @@ private:
 
   std::vector<size_t> threads_choices;
   std::vector<double> cap_prop;
-  scale_policy sp;
+  std::vector<scale_policy> scale_policies;
 
 public:
   Bench(const std::vector<size_t> &threads_choices,
-        const std::vector<double> &cap_prop, scale_policy sp = scale_policy::INTERLEAVE)
-      : threads_choices(threads_choices), cap_prop(cap_prop), sp(sp) {}
+        const std::vector<double> &cap_prop,
+        const std::vector<scale_policy> &scale_policies = {scale_policy::INTERLEAVE})
+      : threads_choices(threads_choices), cap_prop(cap_prop),
+        scale_policies(scale_policies) {}
   void run() {
     // calibrate TSC frequency first.
     // could do with syscall?
@@ -52,12 +54,14 @@ public:
     for (auto &trace : traces) {
       size_t siz = trace.get_working_set_size();
       std::vector<CacheRunner> caches;
-      for (double prop : cap_prop) {
-        for (size_t num_threads : threads_choices) {
-          size_t cap_scale = sp == scale_policy::TRANSFORM_SPACE ? num_threads : 1;
-          size_t cap = ceil(prop * siz * cap_scale);
-          for (auto &[name, maker] : cache_makers)
-            caches.push_back(CacheRunner{name, maker(cap), secret, num_threads, sp, prop});
+      for (scale_policy sp : scale_policies) {
+        for (double prop : cap_prop) {
+          for (size_t num_threads : threads_choices) {
+            size_t cap_scale = sp == scale_policy::TRANSFORM_SPACE ? num_threads : 1;
+            size_t cap = ceil(prop * siz * cap_scale);
+            for (auto &[name, maker] : cache_makers)
+              caches.push_back(CacheRunner{name, maker(cap), secret, num_threads, sp, prop});
+          }
         }
       }
       std::println("running trace {}", trace.get_name());
@@ -94,6 +98,7 @@ public:
           results["batch"] = batch;
           results["capacity"] = cache.get_cap();
           results["cap_prop"] = cache.get_cap_prop();
+          results["scale_policy"] = cache.get_scale_policy_name();
           out << results.dump() << "\n";
         }
       }

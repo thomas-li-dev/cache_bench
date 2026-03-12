@@ -39,8 +39,16 @@ def normalize_records(records: list[dict]) -> list[dict]:
         nr["batch"] = int(nr.get("batch", 0))
         nr["capacity"] = int(nr.get("capacity", -1))
         nr["cap_prop"] = float(nr.get("cap_prop", -1))
+        nr["scale_policy"] = nr.get("scale_policy", "unknown")
         out.append(nr)
     return out
+
+
+def split_by_scale_policy(records: list[dict]) -> dict[str, list[dict]]:
+    by_sp: dict[str, list[dict]] = defaultdict(list)
+    for r in records:
+        by_sp[r["scale_policy"]].append(r)
+    return dict(by_sp)
 
 
 def aggregate_by_cache_trace_thread_capprop(records: list[dict]) -> list[dict]:
@@ -121,7 +129,7 @@ def write_summary_csv(rows: list[dict], out_path: Path) -> None:
 
 
 def plot_aggregate_vs_threads(
-    rows: list[dict], output_dir: Path, metric: str, ylabel: str
+    rows: list[dict], output_dir: Path, metric: str, ylabel: str, sp: str
 ) -> None:
     by_trace: dict[str, list[dict]] = defaultdict(list)
     for r in rows:
@@ -145,7 +153,7 @@ def plot_aggregate_vs_threads(
                 plt.plot(xs, ys, marker="o", label=cache)
 
             plt.title(
-                f"{trace}: {ylabel} vs threads (cap_prop={cap_prop}, mean over batches)"
+                f"{trace} [{sp}]: {ylabel} vs threads (cap_prop={cap_prop})"
             )
             plt.xlabel("threads")
             plt.ylabel(ylabel)
@@ -153,14 +161,14 @@ def plot_aggregate_vs_threads(
             plt.legend()
             plt.tight_layout()
             plt.savefig(
-                output_dir / f"agg_{trace}_prop{cap_prop}_vs_threads_{metric}.png",
+                output_dir / f"agg_{sp}_{trace}_prop{cap_prop}_vs_threads_{metric}.png",
                 dpi=140,
             )
             plt.close()
 
 
 def plot_aggregate_vs_capacity(
-    rows: list[dict], output_dir: Path, metric: str, ylabel: str
+    rows: list[dict], output_dir: Path, metric: str, ylabel: str, sp: str
 ) -> None:
     by_trace: dict[str, list[dict]] = defaultdict(list)
     for r in rows:
@@ -184,7 +192,7 @@ def plot_aggregate_vs_capacity(
                 plt.plot(xs, ys, marker="o", label=cache)
 
             plt.title(
-                f"{trace}: {ylabel} vs cap_prop (threads={threads}, mean over batches)"
+                f"{trace} [{sp}]: {ylabel} vs cap_prop (threads={threads})"
             )
             plt.xlabel("cap_prop (fraction of working set)")
             plt.ylabel(ylabel)
@@ -192,13 +200,15 @@ def plot_aggregate_vs_capacity(
             plt.legend()
             plt.tight_layout()
             plt.savefig(
-                output_dir / f"agg_{trace}_thr{threads}_vs_capprop_{metric}.png",
+                output_dir / f"agg_{sp}_{trace}_thr{threads}_vs_capprop_{metric}.png",
                 dpi=140,
             )
             plt.close()
 
 
-def plot_batch_series(records: list[dict], output_dir: Path, metric: str, ylabel: str) -> None:
+def plot_batch_series(
+    records: list[dict], output_dir: Path, metric: str, ylabel: str, sp: str
+) -> None:
     by_cache_trace_capprop: dict[tuple[str, str, float], list[dict]] = defaultdict(list)
     for r in records:
         by_cache_trace_capprop[
@@ -217,18 +227,21 @@ def plot_batch_series(records: list[dict], output_dir: Path, metric: str, ylabel
             ys = [r[metric] for r in trows]
             plt.plot(xs, ys, marker=".", label=f"{threads} threads")
 
-        plt.title(f"{cache} on {trace} (cap_prop={cap_prop}): {ylabel} by batch")
+        plt.title(f"{cache} on {trace} [{sp}] (cap_prop={cap_prop}): {ylabel} by batch")
         plt.xlabel("batch")
         plt.ylabel(ylabel)
         plt.grid(True, alpha=0.3)
         plt.legend()
         plt.tight_layout()
-        plt.savefig(output_dir / f"batch_{cache}_{trace}_prop{cap_prop}_{metric}.png", dpi=140)
+        plt.savefig(
+            output_dir / f"batch_{sp}_{cache}_{trace}_prop{cap_prop}_{metric}.png",
+            dpi=140,
+        )
         plt.close()
 
 
 def plot_latency_percentiles_vs_threads(
-    rows: list[dict], output_dir: Path
+    rows: list[dict], output_dir: Path, sp: str
 ) -> None:
     percentile_keys = ["p50_latency_ns", "p90_latency_ns", "p95_latency_ns", "p99_latency_ns"]
     by_trace: dict[str, list[dict]] = defaultdict(list)
@@ -254,21 +267,21 @@ def plot_latency_percentiles_vs_threads(
                     ys = [r[pk] for r in cache_rows]
                     plt.plot(xs, ys, marker="o", label=f"{cache} {pk.split('_')[0]}")
 
-            plt.title(f"{trace}: latency percentiles vs threads (cap_prop={cap_prop})")
+            plt.title(f"{trace} [{sp}]: latency percentiles vs threads (cap_prop={cap_prop})")
             plt.xlabel("threads")
             plt.ylabel("latency (ns)")
             plt.grid(True, alpha=0.3)
             plt.legend(fontsize="small")
             plt.tight_layout()
             plt.savefig(
-                output_dir / f"latency_pct_{trace}_prop{cap_prop}_vs_threads.png",
+                output_dir / f"latency_pct_{sp}_{trace}_prop{cap_prop}_vs_threads.png",
                 dpi=140,
             )
             plt.close()
 
 
 def plot_latency_percentiles_vs_capacity(
-    rows: list[dict], output_dir: Path
+    rows: list[dict], output_dir: Path, sp: str
 ) -> None:
     percentile_keys = ["p50_latency_ns", "p90_latency_ns", "p95_latency_ns", "p99_latency_ns"]
     by_trace: dict[str, list[dict]] = defaultdict(list)
@@ -294,20 +307,20 @@ def plot_latency_percentiles_vs_capacity(
                     ys = [r[pk] for r in cache_rows]
                     plt.plot(xs, ys, marker="o", label=f"{cache} {pk.split('_')[0]}")
 
-            plt.title(f"{trace}: latency percentiles vs cap_prop (threads={threads})")
+            plt.title(f"{trace} [{sp}]: latency percentiles vs cap_prop (threads={threads})")
             plt.xlabel("cap_prop (fraction of working set)")
             plt.ylabel("latency (ns)")
             plt.grid(True, alpha=0.3)
             plt.legend(fontsize="small")
             plt.tight_layout()
             plt.savefig(
-                output_dir / f"latency_pct_{trace}_thr{threads}_vs_capprop.png",
+                output_dir / f"latency_pct_{sp}_{trace}_thr{threads}_vs_capprop.png",
                 dpi=140,
             )
             plt.close()
 
 
-def plot_latency_boxplots(records: list[dict], output_dir: Path) -> None:
+def plot_latency_boxplots(records: list[dict], output_dir: Path, sp: str) -> None:
     by_trace: dict[str, list[dict]] = defaultdict(list)
     for r in records:
         by_trace[r["trace_name"]].append(r)
@@ -331,16 +344,129 @@ def plot_latency_boxplots(records: list[dict], output_dir: Path) -> None:
 
             plt.figure(figsize=(max(8, len(labels) * 1.2), 6))
             plt.boxplot(data, labels=labels, showfliers=False)
-            plt.title(f"{trace}: latency distribution (threads={threads}, cap_prop={cap_prop})")
+            plt.title(f"{trace} [{sp}]: latency distribution (threads={threads}, cap_prop={cap_prop})")
             plt.ylabel("latency (ns)")
             plt.xticks(rotation=45, ha="right", fontsize="small")
             plt.grid(True, alpha=0.3, axis="y")
             plt.tight_layout()
             plt.savefig(
-                output_dir / f"latency_box_{trace}_thr{threads}_prop{cap_prop}.png",
+                output_dir / f"latency_box_{sp}_{trace}_thr{threads}_prop{cap_prop}.png",
                 dpi=140,
             )
             plt.close()
+
+
+def aggregate_with_policy(records: list[dict]) -> list[dict]:
+    groups: dict[tuple[str, str, str, int, float], list[dict]] = defaultdict(list)
+    for r in records:
+        key = (
+            r["scale_policy"],
+            r["cache_name"],
+            r["trace_name"],
+            int(r["threads"]),
+            r["cap_prop"],
+        )
+        groups[key].append(r)
+
+    out: list[dict] = []
+    for (sp, cache, trace, threads, cap_prop), rows in sorted(groups.items()):
+        all_samples = []
+        for r in rows:
+            all_samples.extend(r.get("samples", []))
+        percentiles = {}
+        if all_samples:
+            arr = np.array(all_samples)
+            for p in [50, 90, 95, 99]:
+                percentiles[f"p{p}_latency_ns"] = float(np.percentile(arr, p))
+        out.append(
+            {
+                "scale_policy": sp,
+                "cache_name": cache,
+                "trace_name": trace,
+                "threads": threads,
+                "cap_prop": cap_prop,
+                "capacity": int(mean(r["capacity"] for r in rows)),
+                "batches": len(rows),
+                "hit_rate_mean": mean(r["hit_rate"] for r in rows),
+                "avg_latency_ns_mean": mean(r["avg_latency_ns"] for r in rows),
+                "throughput_qps_mean": mean(r["throughput_qps"] for r in rows),
+                **percentiles,
+            }
+        )
+    return out
+
+
+def plot_compare_policies_vs_threads(
+    rows: list[dict], output_dir: Path, metric: str, ylabel: str
+) -> None:
+    by_trace: dict[str, list[dict]] = defaultdict(list)
+    for r in rows:
+        by_trace[r["trace_name"]].append(r)
+
+    for trace, trace_rows in by_trace.items():
+        by_cap_prop: dict[float, list[dict]] = defaultdict(list)
+        for r in trace_rows:
+            by_cap_prop[r["cap_prop"]].append(r)
+
+        for cap_prop, cap_rows in sorted(by_cap_prop.items()):
+            plt.figure(figsize=(10, 6))
+            by_sp_cache: dict[tuple[str, str], list[dict]] = defaultdict(list)
+            for r in cap_rows:
+                by_sp_cache[(r["scale_policy"], r["cache_name"])].append(r)
+
+            for (sp, cache), sc_rows in sorted(by_sp_cache.items()):
+                sc_rows.sort(key=lambda x: x["threads"])
+                xs = [r["threads"] for r in sc_rows]
+                ys = [r[metric] for r in sc_rows]
+                plt.plot(xs, ys, marker="o", label=f"{cache} [{sp}]")
+
+            plt.title(
+                f"{trace}: {ylabel} vs threads (cap_prop={cap_prop}, all policies)"
+            )
+            plt.xlabel("threads")
+            plt.ylabel(ylabel)
+            plt.grid(True, alpha=0.3)
+            plt.legend(fontsize="small")
+            plt.tight_layout()
+            plt.savefig(
+                output_dir / f"cmp_policies_{trace}_prop{cap_prop}_vs_threads_{metric}.png",
+                dpi=140,
+            )
+            plt.close()
+
+
+def plot_compare_traces_vs_threads(
+    rows: list[dict], output_dir: Path, metric: str, ylabel: str, sp: str
+) -> None:
+    by_cap_prop: dict[float, list[dict]] = defaultdict(list)
+    for r in rows:
+        by_cap_prop[r["cap_prop"]].append(r)
+
+    for cap_prop, cap_rows in sorted(by_cap_prop.items()):
+        plt.figure(figsize=(10, 6))
+        by_trace_cache: dict[tuple[str, str], list[dict]] = defaultdict(list)
+        for r in cap_rows:
+            by_trace_cache[(r["trace_name"], r["cache_name"])].append(r)
+
+        for (trace, cache), tc_rows in sorted(by_trace_cache.items()):
+            tc_rows.sort(key=lambda x: x["threads"])
+            xs = [r["threads"] for r in tc_rows]
+            ys = [r[metric] for r in tc_rows]
+            plt.plot(xs, ys, marker="o", label=f"{cache} [{trace}]")
+
+        plt.title(
+            f"[{sp}]: {ylabel} vs threads (cap_prop={cap_prop}, all traces)"
+        )
+        plt.xlabel("threads")
+        plt.ylabel(ylabel)
+        plt.grid(True, alpha=0.3)
+        plt.legend(fontsize="small")
+        plt.tight_layout()
+        plt.savefig(
+            output_dir / f"cmp_traces_{sp}_prop{cap_prop}_vs_threads_{metric}.png",
+            dpi=140,
+        )
+        plt.close()
 
 
 def main() -> None:
@@ -362,35 +488,66 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     records = normalize_records(load_records(input_path))
-    summary = aggregate_by_cache_trace_thread_capprop(records)
-    write_summary_csv(summary, output_dir / "aggregate_summary.csv")
+    by_sp = split_by_scale_policy(records)
 
-    plot_aggregate_vs_threads(
-        summary, output_dir, metric="throughput_qps_mean", ylabel="throughput (qps)"
-    )
-    plot_aggregate_vs_threads(
-        summary, output_dir, metric="avg_latency_ns_mean", ylabel="avg latency (ns)"
-    )
-    plot_aggregate_vs_threads(summary, output_dir, metric="hit_rate_mean", ylabel="hit rate")
+    for sp, sp_records in sorted(by_sp.items()):
+        summary = aggregate_by_cache_trace_thread_capprop(sp_records)
+        write_summary_csv(summary, output_dir / f"aggregate_summary_{sp}.csv")
 
-    plot_aggregate_vs_capacity(
-        summary, output_dir, metric="throughput_qps_mean", ylabel="throughput (qps)"
-    )
-    plot_aggregate_vs_capacity(
-        summary, output_dir, metric="avg_latency_ns_mean", ylabel="avg latency (ns)"
-    )
-    plot_aggregate_vs_capacity(summary, output_dir, metric="hit_rate_mean", ylabel="hit rate")
+        plot_aggregate_vs_threads(
+            summary, output_dir, metric="throughput_qps_mean", ylabel="throughput (qps)", sp=sp
+        )
+        plot_aggregate_vs_threads(
+            summary, output_dir, metric="avg_latency_ns_mean", ylabel="avg latency (ns)", sp=sp
+        )
+        plot_aggregate_vs_threads(
+            summary, output_dir, metric="hit_rate_mean", ylabel="hit rate", sp=sp
+        )
 
-    plot_batch_series(
-        records, output_dir, metric="throughput_qps", ylabel="throughput (qps)"
-    )
-    plot_batch_series(
-        records, output_dir, metric="avg_latency_ns", ylabel="avg latency (ns)"
-    )
+        plot_aggregate_vs_capacity(
+            summary, output_dir, metric="throughput_qps_mean", ylabel="throughput (qps)", sp=sp
+        )
+        plot_aggregate_vs_capacity(
+            summary, output_dir, metric="avg_latency_ns_mean", ylabel="avg latency (ns)", sp=sp
+        )
+        plot_aggregate_vs_capacity(
+            summary, output_dir, metric="hit_rate_mean", ylabel="hit rate", sp=sp
+        )
 
-    plot_latency_percentiles_vs_threads(summary, output_dir)
-    plot_latency_percentiles_vs_capacity(summary, output_dir)
-    plot_latency_boxplots(records, output_dir)
+        plot_batch_series(
+            sp_records, output_dir, metric="throughput_qps", ylabel="throughput (qps)", sp=sp
+        )
+        plot_batch_series(
+            sp_records, output_dir, metric="avg_latency_ns", ylabel="avg latency (ns)", sp=sp
+        )
+
+        plot_latency_percentiles_vs_threads(summary, output_dir, sp=sp)
+        plot_latency_percentiles_vs_capacity(summary, output_dir, sp=sp)
+        plot_latency_boxplots(sp_records, output_dir, sp=sp)
+
+        traces = set(r["trace_name"] for r in summary)
+        if len(traces) > 1:
+            plot_compare_traces_vs_threads(
+                summary, output_dir, metric="throughput_qps_mean", ylabel="throughput (qps)", sp=sp
+            )
+            plot_compare_traces_vs_threads(
+                summary, output_dir, metric="avg_latency_ns_mean", ylabel="avg latency (ns)", sp=sp
+            )
+            plot_compare_traces_vs_threads(
+                summary, output_dir, metric="hit_rate_mean", ylabel="hit rate", sp=sp
+            )
+
+    if len(by_sp) > 1:
+        combined = aggregate_with_policy(records)
+        plot_compare_policies_vs_threads(
+            combined, output_dir, metric="throughput_qps_mean", ylabel="throughput (qps)"
+        )
+        plot_compare_policies_vs_threads(
+            combined, output_dir, metric="avg_latency_ns_mean", ylabel="avg latency (ns)"
+        )
+        plot_compare_policies_vs_threads(
+            combined, output_dir, metric="hit_rate_mean", ylabel="hit rate"
+        )
 
     print(f"Wrote plots and summary to: {output_dir}")
 
