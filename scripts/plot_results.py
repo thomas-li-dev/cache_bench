@@ -313,32 +313,31 @@ def plot_latency_boxplots(records: list[dict], output_dir: Path) -> None:
         by_trace[r["trace_name"]].append(r)
 
     for trace, trace_rows in by_trace.items():
-        by_threads: dict[int, list[dict]] = defaultdict(list)
+        by_threads_capprop: dict[tuple[int, float], list[dict]] = defaultdict(list)
         for r in trace_rows:
-            by_threads[int(r["threads"])].append(r)
+            by_threads_capprop[(int(r["threads"]), r["cap_prop"])].append(r)
 
-        for threads, t_rows in sorted(by_threads.items()):
-            by_cache_cap: dict[tuple[str, int], list[float]] = defaultdict(list)
+        for (threads, cap_prop), t_rows in sorted(by_threads_capprop.items()):
+            by_cache: dict[str, list[float]] = defaultdict(list)
             for r in t_rows:
                 for s in r.get("samples", []):
-                    by_cache_cap[(r["cache_name"], int(r["capacity"]))].append(s)
+                    by_cache[r["cache_name"]].append(s)
 
-            if not by_cache_cap:
+            if not by_cache:
                 continue
 
-            labels = sorted(by_cache_cap.keys())
-            data = [by_cache_cap[k] for k in labels]
-            tick_labels = [f"{c}\ncap={cap}" for c, cap in labels]
+            labels = sorted(by_cache.keys())
+            data = [by_cache[k] for k in labels]
 
             plt.figure(figsize=(max(8, len(labels) * 1.2), 6))
-            plt.boxplot(data, labels=tick_labels, showfliers=False)
-            plt.title(f"{trace}: latency distribution (threads={threads})")
+            plt.boxplot(data, labels=labels, showfliers=False)
+            plt.title(f"{trace}: latency distribution (threads={threads}, cap_prop={cap_prop})")
             plt.ylabel("latency (ns)")
             plt.xticks(rotation=45, ha="right", fontsize="small")
             plt.grid(True, alpha=0.3, axis="y")
             plt.tight_layout()
             plt.savefig(
-                output_dir / f"latency_box_{trace}_thr{threads}.png",
+                output_dir / f"latency_box_{trace}_thr{threads}_prop{cap_prop}.png",
                 dpi=140,
             )
             plt.close()

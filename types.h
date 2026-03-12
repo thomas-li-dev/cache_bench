@@ -7,11 +7,9 @@ using cache_token_t = uint64_t;
 
 static inline cache_token_t get_token_from_secret(cache_key_t k,
                                                   uint64_t secret) {
-  // source: https://oi-wiki.org/graph/tree-hash/
-  k ^= secret;
-  k ^= k << 13;
-  k ^= k >> 7;
-  k ^= k << 17;
-  k ^= secret;
-  return k;
+  k += secret;
+  k += 0x9e3779b97f4a7c15;
+  k = (k ^ (k >> 30)) * 0xbf58476d1ce4e5b9;
+  k = (k ^ (k >> 27)) * 0x94d049bb133111eb;
+  return k ^ (k >> 31);
 }

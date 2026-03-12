@@ -1,75 +1,55 @@
 #pragma once
 #include "cache.h"
+#include "types.h"
+#include <boost/unordered/concurrent_flat_map.hpp>
 #include <cassert>
 #include <functional>
 #include <list>
 #include <mutex>
-#include <unordered_map>
-
-struct Node {
-  cache_key_t key;
-  cache_token_t token;
-  bool visited = false;
-};
-
+using namespace boost::unordered;
 class SIEVE : public ICache {
 private:
+  struct MapData {
+    cache_token_t t;
+    // set this in order to modify in const function
+    // we don't care if multiple visits hit this
+    // since writing to bool should be atomic
+    mutable bool visited;
+  };
   size_t cap;
-  std::list<Node> nodeList;
-  std::unordered_map<cache_key_t, std::list<Node>::iterator> map;
-  std::list<Node>::iterator hand = nodeList.end();
+  std::list<cache_key_t> key_order;
+  concurrent_flat_map<cache_key_t, MapData> map;
+  std::list<cache_key_t>::iterator hand = key_order.end();
   std::mutex mut;
 
-  bool in(cache_key_t key) const { return map.contains(key); }
-  bool can_add() const { return map.size() < cap; }
-
   void advance_hand() {
-    if (nodeList.empty()) {
-      hand = nodeList.end();
+    if (key_order.empty())
       return;
-    }
-
-    if (hand == nodeList.end()) {
-      hand = std::prev(nodeList.end()); // start at back
-      return;
-    }
-
-    if (hand == nodeList.begin()) {
-      hand = std::prev(nodeList.end()); // wrap front -> back
-      return;
-    }
-
-    --hand;
-  }
-
-  void add(cache_key_t key, cache_token_t token) {
-    assert(nodeList.size() < cap);
-
-    nodeList.push_front(Node{key, token, false});
-    map[key] = nodeList.begin();
-
-    if (nodeList.size() == 1)
-      hand = nodeList.begin();
+    if (hand == key_order.begin()) {
+      hand = std::prev(key_order.end());
+    } else
+      hand--;
   }
 
   void evict() {
+    if (hand == key_order.end())
+      hand--;
     while (true) {
-      if (hand == nodeList.end())
-        hand = nodeList.begin();
-
-      if (!hand->visited) {
+      auto k = *hand;
+      bool was_vis = false;
+      map.cvisit(k, [&](auto &x) {
+        if (x.second.visited) {
+          was_vis = true;
+          x.second.visited = false;
+        }
+      });
+      if (!was_vis) {
         auto to_remove = hand;
         advance_hand();
-        map.erase(to_remove->key);
-        nodeList.erase(to_remove);
-
-        if (nodeList.empty())
-          hand = nodeList.end();
-
+        map.erase(k);
+        key_order.erase(to_remove);
         return;
       }
-
-      hand->visited = false;
       advance_hand();
     }
   }
@@ -77,26 +57,26 @@ private:
 public:
   explicit SIEVE(size_t cap) : cap(cap) { assert(cap > 0); }
 
-  cache_token_t
-  query(cache_key_t k,
-        std::function<cache_token_t(cache_key_t)> get_token) override {
-    // lock while we look for element
-    std::lock_guard<std::mutex> lock(mut);
+  cache_token_t query(cache_key_t k,
+                      std::function<cache_token_t()> get_token) override {
+    cache_token_t t;
+    bool hit = map.cvisit(k, [&](auto &x) {
+      t = x.second.t;
+      x.second.visited = true;
+    });
+    if (hit)
+      return t;
+    t = get_token();
+    std::lock_guard lock{mut};
 
-    // can this hot path avoid a lock??
-    auto it = map.find(k);
-    if (it != map.end()) {
-      it->second->visited = true;
-      return it->second->token;
-    }
-
-    cache_token_t t = get_token(k);
-
-    // evict according to docs
-    if (!can_add())
+    if (key_order.size() == cap)
       evict();
-
-    add(k, t);
+    key_order.push_front(k);
+    bool did = map.try_emplace(k, MapData{t, false});
+    if (!did) {
+      key_order.pop_front();
+      return t;
+    }
     return t;
   }
 

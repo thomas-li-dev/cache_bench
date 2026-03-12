@@ -9,10 +9,9 @@ private:
 
 public:
   BadCache(size_t cap) : cap_(cap) {}
-  cache_token_t
-  query(cache_key_t k,
-        std::function<cache_token_t(cache_key_t)> get_token) override {
-    return get_token(k);
+  cache_token_t query(cache_key_t k [[maybe_unused]],
+                      std::function<cache_token_t()> get_token) override {
+    return get_token();
   }
   virtual size_t get_cap() const override { return cap_; }
   static bool can_multithread() { return true; }

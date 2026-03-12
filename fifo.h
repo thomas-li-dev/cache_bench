@@ -19,14 +19,13 @@ private:
 public:
   FIFO(size_t cap) : cap(cap) {}
 
-  cache_token_t
-  query(cache_key_t k,
-        std::function<cache_token_t(cache_key_t)> get_token) override {
+  cache_token_t query(cache_key_t k,
+                      std::function<cache_token_t()> get_token) override {
     cache_token_t t;
     bool hit = map.cvisit(k, [&](auto &x) { t = x.second; });
     if (hit)
       return t;
-    t = get_token(k);
+    t = get_token();
     std::lock_guard lock{mut};
     auto itr = ord.insert(ord.end(), k);
     bool inserted = map.try_emplace(k, t);

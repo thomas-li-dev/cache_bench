@@ -30,6 +30,7 @@ private:
   double cap_prop;
 
   void do_query(cache_key_t k, QueryStats &stats) {
+    cache_token_t expected = get_token_from_secret(k, secret);
     bool missed = false;
     // sample every 1/1024 queries
     bool sample = stats.queries++ % 1024 == 0;
@@ -38,16 +39,15 @@ private:
       _mm_lfence();
       start_cyc = __rdtsc();
     }
-    cache_token_t t = cache->query(k, [&](cache_key_t k) {
+    cache_token_t t = cache->query(k, [&]() {
       missed = true;
-      return get_token_from_secret(k, secret);
+      return expected;
     });
     if (sample) {
       _mm_lfence();
       end_cyc = __rdtsc();
       stats.samples.push_back(end_cyc - start_cyc);
     }
-    cache_token_t expected = get_token_from_secret(k, secret);
 
     [[unlikely]]
     if (t != expected) {
