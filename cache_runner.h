@@ -6,6 +6,7 @@
 #include <memory>
 #include <print>
 #include <span>
+#include <pthread.h>
 #include <thread>
 #include <x86intrin.h>
 
@@ -75,7 +76,6 @@ public:
 
   QueryStats do_queries(std::span<cache_key_t> buf) {
     if (num_threads > 1) {
-      // TODO: should probably pin threads?
       std::vector<std::thread> threads;
       std::vector<QueryStats> stats(num_threads);
       std::chrono::time_point<std::chrono::high_resolution_clock> rt_start,
@@ -91,6 +91,10 @@ public:
       for (size_t i = 0; i < num_threads; i++) {
         threads.push_back(std::thread(
             [&](size_t tid) {
+              cpu_set_t cpuset;
+              CPU_ZERO(&cpuset);
+              CPU_SET(tid, &cpuset);
+              pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
               start_barrier.arrive_and_wait();
               auto start = std::chrono::high_resolution_clock::now();
               if (sp == scale_policy::INTERLEAVE) {

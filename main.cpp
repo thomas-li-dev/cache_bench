@@ -14,6 +14,6 @@ int main() {
   b.add_cache<SIEVE>("SIEVE");
   // b.add_cache<LRU>("lru");
   //  b.add_cache<BadCache>("BadCache");
-  b.add_trace("twitter", twi_trace_location, 1);
+  b.add_trace("twitter", twi_trace_location, 10);
   b.run();
 }
