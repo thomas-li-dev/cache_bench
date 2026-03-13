@@ -1,23 +1,21 @@
 #pragma once
 #include "cache.h"
 #include "types.h"
+#include <atomic>
+#include <boost/lockfree/queue.hpp>
 #include <boost/unordered/concurrent_flat_map.hpp>
-#include <cassert>
 #include <functional>
-#include <list>
-#include <mutex>
 
 using namespace boost::unordered;
 class FIFO : public ICache {
 private:
-  size_t cap;
-  std::list<cache_key_t> ord;
+  int64_t cap;
+  boost::lockfree::queue<cache_key_t> ord;
   concurrent_flat_map<cache_key_t, cache_token_t> map;
-  std::mutex mut;
-  size_t siz{};
+  std::atomic<int64_t> siz{};
 
 public:
-  FIFO(size_t cap) : cap(cap) {}
+  FIFO(size_t cap) : cap(cap), ord(cap * 2) {}
 
   cache_token_t query(cache_key_t k,
                       std::function<cache_token_t()> get_token) override {
@@ -26,20 +24,25 @@ public:
     if (hit)
       return t;
     t = get_token();
-    std::lock_guard lock{mut};
-    auto itr = ord.insert(ord.end(), k);
-    bool inserted = map.try_emplace(k, t);
-    if (!inserted) {
-      ord.erase(itr);
+    bool inserted = map.emplace(k, t);
+    if (!inserted)
+      return t;
+    bool pushed = ord.bounded_push(k);
+    if (!pushed) {
+      map.erase(k);
       return t;
     }
-    siz++;
-    while (siz > cap) {
-      auto victim = ord.front();
-      ord.pop_front();
-      if (map.erase(victim))
-        siz--;
+    siz.fetch_add(1, std::memory_order::relaxed);
+
+    cache_key_t evict_key;
+    while (siz.load(std::memory_order::relaxed) > cap) {
+      bool popped = ord.pop(evict_key);
+      if (!popped)
+        break;
+      siz.fetch_sub(1, std::memory_order::relaxed);
+      map.erase(evict_key);
     }
+
     return t;
   }
   virtual size_t get_cap() const override { return cap; }
