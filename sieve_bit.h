@@ -9,47 +9,34 @@
 #include <cassert>
 #include <list>
 #include <mutex>
+#include <queue>
 using namespace boost::unordered;
 
-const int W = 64, K = 4;
+const int W = 64;
 using T = uint64_t;
 
-inline T make_msk(int l, int r) {
-  if (l > r)
-    return 0;
-  int len = r - l + 1;
-  if (len == W)
-    return ~T(0);
-  T msk = (T(1) << len) - 1;
-  return msk << l;
-}
-class SIEVEBit : public ICache {
+template <int K> class SIEVEBit : public ICache {
 private:
   struct Block {
     T vis[K], in[K];
+    int num_in;
     std::array<cache_key_t, W * K> ks;
     void set_vis(int i) { vis[i / W] |= T(1) << (i % W); }
-    void set_in(int i) { in[i / W] |= T(1) << (i % W); }
-    void clr_in(int i) { in[i / W] &= ~(T(1) << (i % W)); }
-    bool empty() {
-      for (int i = 0; i < K; i++)
-        if (in[i])
-          return false;
-      return true;
+    void set_in(int i) {
+      in[i / W] |= T(1) << (i % W);
+      num_in++;
     }
+    void clr_in(int i) {
+      in[i / W] &= ~(T(1) << (i % W));
+      num_in--;
+    }
+    bool empty() { return num_in == 0; }
     int nxt_and_clr(int st) {
-      // find first x >= st where in[x] = 1 and vis[x] = 0
-      // for all st <= y < x where in[y] = 1,
-      // must have vis[y] = 1 => set to 0
-
-      // return size if none
-      // TODO: write inline
       for (int b = st / W; b < K; b++) {
         if (b == st / W) {
           T any = (~vis[b] & in[b]) >> (st % W);
           if (any) {
             int out = std::countr_zero(any) + st;
-            // clear [st%W,out%W)
             T skip = (any & -any) - 1;
             vis[b] &= ~(skip << (st % W));
             return out;
@@ -87,6 +74,8 @@ private:
   int64_t siz{};
   unordered_flat_map<cache_key_t, MapData> map;
 
+  std::queue<ListData *> free;
+
 public:
   explicit SIEVEBit(size_t cap) : cap(cap) {
     assert(cap > 0);
@@ -105,7 +94,7 @@ public:
       dat.b->set_vis(dat.i);
       return dat.t;
     }
-    while (siz >= cap) {
+    if (siz == cap) {
       // evict smth
       if (hand_i == W * K) {
         hand_l = hand_l->prv;
@@ -121,8 +110,7 @@ public:
           auto prv = hand_l->prv, nxt = hand_l->nxt;
           prv->nxt = nxt;
           nxt->prv = prv;
-
-          delete hand_l;
+          free.push(hand_l);
           hand_l = prv;
           hand_i = 0;
         }
@@ -131,7 +119,12 @@ public:
     t = get_token(ctx);
     if (head_num == W * K) {
       // make new head
-      ListData *nhead = new ListData{};
+      ListData *nhead;
+      if (free.size()) {
+        nhead = free.front();
+        free.pop();
+      } else
+        nhead = new ListData;
       auto prv = head->prv, nxt = head;
       prv->nxt = nhead;
       nhead->prv = prv;
