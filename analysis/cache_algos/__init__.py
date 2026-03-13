@@ -20,3 +20,4 @@ from .clock import Clock
 from .twoq import TwoQ
 from .sieve import Sieve
 from .arc import ARC
+from .ghostsieve import GhostSieve
