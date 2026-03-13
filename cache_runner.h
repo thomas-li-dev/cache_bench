@@ -2,7 +2,7 @@
 #include "types.h"
 #include <barrier>
 #include <chrono>
-#include <print>
+#include <cstdio>
 #include <pthread.h>
 #include <span>
 #include <thread>
@@ -69,7 +69,7 @@ private:
     [[unlikely]]
     if (t != expected) {
       // TODO: we don't have much context for this.
-      std::println("cache {} returned wrong value???", name);
+      printf("cache %s returned wrong value???\n", name.c_str());
       std::exit(1);
     }
 

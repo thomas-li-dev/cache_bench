@@ -6,6 +6,7 @@
 #include "trace.h"
 #include "twi_trace.h"
 #include "types.h"
+#include <cstdio>
 #include <fstream>
 #include <unordered_set>
 using namespace std;
@@ -13,8 +14,7 @@ using namespace std;
 // trace dir should only contain the trace files.
 int main(int argc, const char **argv) {
   if (argc < 6) {
-    std::println(
-        "args: trace name, trace dir, out dir, batch size, num batches\n");
+    printf("args: trace name, trace dir, out dir, batch size, num batches\n");
     return 1;
   }
   namespace fs = std::filesystem;
@@ -31,10 +31,10 @@ int main(int argc, const char **argv) {
   } else if (name == "meta22") {
     t = new Meta22Trace(trace_dir);
   } else {
-    std::println("invalid trace name\n");
+    printf("invalid trace name\n");
     return 1;
   }
-  std::println("making files of {} queries", batch_size);
+  printf("making files of %zu queries\n", batch_size);
   hll::HyperLogLog hll(10);
   std::vector<cache_key_t> buf(batch_size);
   for (size_t f = 0; f < num_batches; f++) {
@@ -52,14 +52,14 @@ int main(int argc, const char **argv) {
     std::string file_name = name + to_string(f) + ".trace";
     std::ofstream file;
     fs::path file_path = out_dir / file_name;
-    std::println("writing to {} {} queries", file_path.string(), num);
+    printf("writing to %s %zu queries\n", file_path.string().c_str(), num);
     file.open(file_path, std::ios::binary);
     file.write((char *)&meta, sizeof(Metadata));
     file.write((char *)buf.data(), sizeof(cache_key_t) * num);
   }
   int est = ceil(hll.estimate());
 
-  std::println("estim {}", est);
+  printf("estim %d\n", est);
   nlohmann::json j;
   j["uniq_keys"] = est;
   std::ofstream out(out_dir / "meta.json");

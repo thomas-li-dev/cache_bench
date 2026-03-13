@@ -7,7 +7,7 @@
 #include <cassert>
 #include <list>
 #include <mutex>
-#include <print>
+#include <cstdio>
 using namespace boost::unordered;
 class SIEVESingle : public ICache {
 private:
@@ -73,7 +73,7 @@ public:
     }
     static int iter = 0;
     if (false && ++iter % 1024 == 0)
-      std::println("steps {}\n", steps);
+      printf("steps %zu\n\n", steps);
     return t;
   }
 

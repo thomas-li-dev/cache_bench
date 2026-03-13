@@ -9,7 +9,7 @@
 #include <fstream>
 #include <functional>
 #include <memory>
-#include <print>
+#include <cstdio>
 #include <vector>
 
 struct BenchEntry {
@@ -17,7 +17,7 @@ struct BenchEntry {
   size_t num_threads, cap;
   double cap_prop;
   scale_policy sp;
-  std::move_only_function<QueryStats(std::span<cache_key_t>)> do_queries;
+  std::function<QueryStats(std::span<cache_key_t>)> do_queries;
 };
 
 class Bench {
@@ -56,7 +56,7 @@ public:
 
     double ns = std::chrono::duration<double, std::nano>(end - start).count();
     double tsc_freq_ghz = (tsc_end - tsc_start) / ns; // cycles per ns
-    std::println("tsc {}", tsc_freq_ghz);
+    printf("tsc %f\n", tsc_freq_ghz);
 
     // for each cache & num threads & capacity (cache options)
     // for each trace
@@ -81,7 +81,7 @@ public:
           }
         }
       }
-      std::println("running trace {}", trace.get_name());
+      printf("running trace %s\n", trace.get_name().c_str());
       std::vector<cache_key_t> buf;
       for (size_t batch = 0;; batch++) {
         auto start = std::chrono::high_resolution_clock::now();
@@ -89,12 +89,11 @@ public:
         auto end = std::chrono::high_resolution_clock::now();
         if (buf.empty())
           break;
-        std::println("batch {} start", batch);
-        std::println(
-            "loaded queries into buf in {} ms",
+        printf("batch %zu start\n", batch);
+        printf("loaded queries into buf in %f ms\n",
             std::chrono::duration<double, std::milli>(end - start).count());
         for (auto &entry : caches) {
-          std::println("starting cache {} {} {}", entry.name, entry.cap,
+          printf("starting cache %s %zu %zu\n", entry.name.c_str(), entry.cap,
                        entry.num_threads);
           QueryStats stats = entry.do_queries(buf);
           nlohmann::json results;
@@ -129,7 +128,7 @@ public:
          [name](size_t cap, uint64_t secret, size_t num_threads,
                 scale_policy sp, double cap_prop,
                 std::span<const int> cpu_order) -> BenchEntry {
-           auto runner = std::make_unique<CacheRunner<T>>(
+           auto runner = std::make_shared<CacheRunner<T>>(
                name, cap, secret, num_threads, sp, cpu_order);
            return BenchEntry{
                name, num_threads, runner->get_cap(), cap_prop, sp,
