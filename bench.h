@@ -17,10 +17,11 @@ private:
   struct CacheMaker {
     std::string name;
     std::function<std::unique_ptr<ICache>(size_t)> maker;
+    bool can_multi;
   };
   std::vector<CacheMaker> cache_makers;
   std::vector<Trace> traces;
-  uint64_t secret = std::random_device()();
+  uint64_t secret = (int64_t)1e11 + 3;
 
   std::vector<size_t> threads_choices;
   std::vector<double> cap_prop;
@@ -29,7 +30,8 @@ private:
 public:
   Bench(const std::vector<size_t> &threads_choices,
         const std::vector<double> &cap_prop,
-        const std::vector<scale_policy> &scale_policies = {scale_policy::INTERLEAVE})
+        const std::vector<scale_policy> &scale_policies =
+            {scale_policy::INTERLEAVE})
       : threads_choices(threads_choices), cap_prop(cap_prop),
         scale_policies(scale_policies) {}
   void run() {
@@ -57,10 +59,13 @@ public:
       for (scale_policy sp : scale_policies) {
         for (double prop : cap_prop) {
           for (size_t num_threads : threads_choices) {
-            size_t cap_scale = sp == scale_policy::TRANSFORM_SPACE ? num_threads : 1;
+            size_t cap_scale =
+                sp == scale_policy::TRANSFORM_SPACE ? num_threads : 1;
             size_t cap = ceil(prop * siz * cap_scale);
-            for (auto &[name, maker] : cache_makers)
-              caches.push_back(CacheRunner{name, maker(cap), secret, num_threads, sp, prop});
+            for (auto &[name, maker, can_multi] : cache_makers)
+              if (num_threads == 1 || can_multi)
+                caches.push_back(CacheRunner{name, maker(cap), secret,
+                                             num_threads, sp, prop});
           }
         }
       }
@@ -108,8 +113,9 @@ public:
   // TODO: support args
   template <class T, class... Args>
   void add_cache(const std::string &name, Args &&...args) {
-    cache_makers.push_back(
-        {name, [](size_t cap) { return std::make_unique<T>(cap); }});
+    cache_makers.push_back({name,
+                            [](size_t cap) { return std::make_unique<T>(cap); },
+                            T::can_multithread()});
   }
   void add_trace(const std::string &name, const fs::path &path,
                  size_t max_blocks = -1) {
