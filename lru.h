@@ -1,7 +1,6 @@
 #pragma once
 #include "cache.h"
 #include <cassert>
-#include <functional>
 #include <list>
 #include <mutex>
 #include <queue>
@@ -31,15 +30,15 @@ private:
 public:
   LRU(size_t cap) : cap(cap) {}
 
-  cache_token_t query(cache_key_t k,
-                      std::function<cache_token_t()> get_token) override {
+  cache_token_t query(cache_key_t k, cache_token_t (*get_token)(void *),
+                      void *ctx) override {
     std::lock_guard lock(mut);
     if (in(k)) {
       auto [t, itr] = map[k];
       order.splice(order.begin(), order, itr);
       return t;
     }
-    cache_token_t t = get_token();
+    cache_token_t t = get_token(ctx);
     if (!can_add())
       evict();
     add(k, t);

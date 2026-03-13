@@ -1,17 +1,13 @@
 #pragma once
-#include "cache.h"
 #include "types.h"
 #include <barrier>
 #include <chrono>
-#include <memory>
 #include <print>
-#include <span>
 #include <pthread.h>
+#include <span>
 #include <thread>
 #include <x86intrin.h>
 
-// TODO: do we need bench -> cacherunner -> cache?
-// maybe combining first two is better?
 struct QueryStats {
   std::chrono::duration<double, std::nano> runtime{};
   size_t queries{}, hits{};
@@ -21,14 +17,26 @@ struct QueryStats {
 
 enum class scale_policy { INTERLEAVE = 0, TRANSFORM_SPACE = 1, REPLICATE = 2 };
 
-class CacheRunner {
+constexpr std::string_view scale_policy_name(scale_policy sp) {
+  switch (sp) {
+  case scale_policy::INTERLEAVE:
+    return "interleave";
+  case scale_policy::TRANSFORM_SPACE:
+    return "transform_space";
+  case scale_policy::REPLICATE:
+    return "replicate";
+  }
+  return "unknown";
+}
+
+template <class Cache> class CacheRunner {
 private:
   std::string name;
-  std::unique_ptr<ICache> cache;
+  Cache cache;
   uint64_t secret;
   size_t num_threads;
   scale_policy sp;
-  double cap_prop;
+  std::vector<int> cpu_order;
 
   void do_query(cache_key_t k, QueryStats &stats) {
     cache_token_t expected = get_token_from_secret(k, secret);
@@ -40,10 +48,18 @@ private:
       _mm_lfence();
       start_cyc = __rdtsc();
     }
-    cache_token_t t = cache->query(k, [&]() {
-      missed = true;
-      return expected;
-    });
+    struct QueryCtx {
+      bool *missed;
+      cache_token_t expected;
+    } qctx{&missed, expected};
+    cache_token_t t = cache.query(
+        k,
+        [](void *ctx) -> cache_token_t {
+          auto *q = static_cast<QueryCtx *>(ctx);
+          *q->missed = true;
+          return q->expected;
+        },
+        &qctx);
     if (sample) {
       _mm_lfence();
       end_cyc = __rdtsc();
@@ -65,14 +81,12 @@ private:
   }
 
 public:
-  CacheRunner(std::string name, std::unique_ptr<ICache> cache, uint64_t secret,
-              size_t num_threads, scale_policy sp, double cap_prop)
-      : name(name), cache(std::move(cache)), secret(secret),
-        num_threads(num_threads), sp(sp), cap_prop(cap_prop) {}
-  // TODO: runtime polymorphism has overhead.
-  // Although this might be better actually.
-  // Avoid compiler inlining function or anything specific
-  // to the testing framework. (like using the fact we run this repeatedly)
+  CacheRunner(std::string name, size_t cap, uint64_t secret,
+              size_t num_threads, scale_policy sp,
+              std::span<const int> cpu_order)
+      : name(std::move(name)), cache(cap), secret(secret),
+        num_threads(num_threads), sp(sp),
+        cpu_order(cpu_order.begin(), cpu_order.end()) {}
 
   QueryStats do_queries(std::span<cache_key_t> buf) {
     if (num_threads > 1) {
@@ -93,8 +107,9 @@ public:
             [&](size_t tid) {
               cpu_set_t cpuset;
               CPU_ZERO(&cpuset);
-              CPU_SET(tid, &cpuset);
-              pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+              CPU_SET(cpu_order[tid], &cpuset);
+              pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t),
+                                     &cpuset);
               start_barrier.arrive_and_wait();
               auto start = std::chrono::high_resolution_clock::now();
               if (sp == scale_policy::INTERLEAVE) {
@@ -139,7 +154,7 @@ public:
       // special path for single thread.
       QueryStats stats;
       auto start = std::chrono::high_resolution_clock::now();
-      for (size_t j = 0; j < buf.size(); j += num_threads) {
+      for (size_t j = 0; j < buf.size(); j++) {
         do_query(buf[j], stats);
       }
       auto end = std::chrono::high_resolution_clock::now();
@@ -147,17 +162,6 @@ public:
       return stats;
     }
   }
-  std::string_view get_name() const { return name; }
-  size_t get_threads() const { return num_threads; }
-  size_t get_cap() const { return cache->get_cap(); }
-  double get_cap_prop() const { return cap_prop; }
-  scale_policy get_scale_policy() const { return sp; }
-  std::string_view get_scale_policy_name() const {
-    switch (sp) {
-    case scale_policy::INTERLEAVE: return "interleave";
-    case scale_policy::TRANSFORM_SPACE: return "transform_space";
-    case scale_policy::REPLICATE: return "replicate";
-    }
-    return "unknown";
-  }
+
+  size_t get_cap() const { return cache.get_cap(); }
 };

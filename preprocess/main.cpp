@@ -1,6 +1,7 @@
 #include "ext/hyperloglog.hpp"
 #include "ext/json.hpp"
 #include "itrace.h"
+#include "meta22_trace.h"
 #include "meta_trace.h"
 #include "trace.h"
 #include "twi_trace.h"
@@ -27,6 +28,8 @@ int main(int argc, const char **argv) {
     t = new TwiTrace(trace_dir);
   } else if (name == "meta") {
     t = new MetaTrace(trace_dir);
+  } else if (name == "meta22") {
+    t = new Meta22Trace(trace_dir);
   } else {
     std::println("invalid trace name\n");
     return 1;

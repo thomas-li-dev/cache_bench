@@ -4,8 +4,6 @@
 #include <atomic>
 #include <boost/lockfree/queue.hpp>
 #include <boost/unordered/concurrent_flat_map.hpp>
-#include <functional>
-
 using namespace boost::unordered;
 
 constexpr int k = 2;
@@ -18,13 +16,13 @@ private:
 
 public:
   FIFOBatch(size_t cap) : cap(cap), ord(cap * 2) {}
-  cache_token_t query(cache_key_t k,
-                      std::function<cache_token_t()> get_token) override {
+  cache_token_t query(cache_key_t k, cache_token_t (*get_token)(void *),
+                      void *ctx) override {
     cache_token_t t;
     bool hit = map.cvisit(k, [&](auto &x) { t = x.second; });
     if (hit)
       return t;
-    t = get_token();
+    t = get_token(ctx);
     bool inserted = map.emplace(k, t);
     if (!inserted)
       return t;
