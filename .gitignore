@@ -2,6 +2,7 @@ cache_bench
 cache_bench_debug
 /preprocess/preprocess
 /preprocess/preprocess_debug
+plots*/
 *.o
 *.d
 compile_commands.json
@@ -13,5 +14,5 @@ meta22_traces/
 meta22_proc/
 .cache/
 plots/
-results.json
+results*.json
 analysis/data/

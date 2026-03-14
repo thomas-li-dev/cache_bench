@@ -53,13 +53,14 @@ def fmt_qps(v: float) -> str:
 
 
 # ── Data loading ─────────────────────────────────────────────────────────────
-def load_records(path: Path) -> list[dict]:
+def load_records(paths: list[Path]) -> list[dict]:
     records = []
-    with path.open() as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                records.append(json.loads(line))
+    for path in paths:
+        with path.open() as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    records.append(json.loads(line))
     return records
 
 
@@ -303,17 +304,17 @@ def plot_dashboard(agg: list[dict], out: Path):
 # ── Main ─────────────────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="Plot scaling comparison.")
-    parser.add_argument("--input", default="results_scaling_sweep.json",
-                        help="JSONL results file")
+    parser.add_argument("--input", nargs="+", default=["results_scaling_sweep.json"],
+                        help="One or more JSONL results files to merge")
     parser.add_argument("--output-dir", default="plots_scaling",
                         help="Output directory for plots")
     args = parser.parse_args()
 
-    inp = Path(args.input)
+    inputs = [Path(p) for p in args.input]
     out = Path(args.output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    records = load_records(inp)
+    records = load_records(inputs)
     agg = aggregate(records)
 
     print(f"Loaded {len(records)} records → {len(agg)} aggregated rows")

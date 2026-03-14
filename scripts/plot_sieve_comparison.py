@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Generate publication-quality graphs comparing SIEVE vs BitSIEVE.
-Focused on single-threaded performance across varying cache capacities.
+Generate publication-quality graphs comparing single-threaded cache implementations
+across varying cache capacities.
 
 Usage:
-    python3 scripts/plot_sieve_comparison.py --input results_capacity_sweep.json
+    python3 scripts/plot_sieve_comparison.py --input results1.json results2.json ...
 """
 import argparse
 import json
@@ -34,25 +34,39 @@ plt.rcParams.update({
 })
 
 CACHE_STYLES = {
-    "SIEVE":    {"color": "#1f77b4", "marker": "o"},
-    "BitSIEVE": {"color": "#d62728", "marker": "s"},
-    # fallbacks
+    "SIEVE":       {"color": "#1f77b4", "marker": "o"},
+    "BitSIEVE":    {"color": "#d62728", "marker": "s"},
     "SIEVESingle": {"color": "#1f77b4", "marker": "o"},
     "SIEVEBit8":   {"color": "#d62728", "marker": "s"},
+    "FIFOSingle":  {"color": "#2ca02c", "marker": "D"},
+    "FIFO":        {"color": "#2ca02c", "marker": "D"},
+    "LRU":         {"color": "#9467bd", "marker": "^"},
 }
 
+_FALLBACK_COLORS = ["#ff7f0e", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
+_FALLBACK_MARKERS = ["v", "P", "X", "*", "h", "d"]
+_fallback_idx = 0
+
 def style_for(name: str) -> dict:
-    return CACHE_STYLES.get(name, {"color": "#333333", "marker": "^"})
+    global _fallback_idx
+    if name not in CACHE_STYLES:
+        CACHE_STYLES[name] = {
+            "color": _FALLBACK_COLORS[_fallback_idx % len(_FALLBACK_COLORS)],
+            "marker": _FALLBACK_MARKERS[_fallback_idx % len(_FALLBACK_MARKERS)],
+        }
+        _fallback_idx += 1
+    return CACHE_STYLES[name]
 
 
 # ── Data loading ─────────────────────────────────────────────────────────────
-def load_records(path: Path) -> list[dict]:
+def load_records(paths: list[Path]) -> list[dict]:
     records = []
-    with path.open() as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                records.append(json.loads(line))
+    for path in paths:
+        with path.open() as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    records.append(json.loads(line))
     return records
 
 
@@ -213,44 +227,48 @@ def plot_latency_cdf(agg: list[dict], out: Path):
         plt.close(fig)
 
 
-# ── Graph 6: Throughput speedup (BitSIEVE / SIEVE) ──────────────────────────
+# ── Graph 6: Throughput relative to slowest cache ────────────────────────────
 def plot_throughput_speedup(agg: list[dict], out: Path):
-    """Bar chart showing relative throughput gain of BitSIEVE over SIEVE."""
-    # Find SIEVE-like and BitSIEVE-like names
-    cache_names = set(r["cache"] for r in agg)
-    sieve_name = next((n for n in cache_names if "Bit" not in n), None)
-    bit_name = next((n for n in cache_names if "Bit" in n), None)
-    if not sieve_name or not bit_name:
-        return
-
+    """Bar chart showing relative throughput of each cache vs the slowest at each capacity."""
     for trace, trows in split_by_trace(agg).items():
         by_cap = defaultdict(dict)
         for r in trows:
             by_cap[r["cap_prop"]][r["cache"]] = r
 
         cap_props = sorted(by_cap.keys())
-        speedups = []
-        for cp in cap_props:
-            if sieve_name in by_cap[cp] and bit_name in by_cap[cp]:
-                s = by_cap[cp][bit_name]["throughput"] / by_cap[cp][sieve_name]["throughput"]
-                speedups.append(s)
-            else:
-                speedups.append(1.0)
+        caches = sorted(set(r["cache"] for r in trows))
+        if len(caches) < 2:
+            continue
+
+        # Find the slowest cache at each capacity as the baseline
+        baseline_name = min(caches, key=lambda c: mean(
+            by_cap[cp][c]["throughput"] for cp in cap_props if c in by_cap[cp]))
+
+        x = np.arange(len(cap_props))
+        width = 0.8 / len(caches)
 
         fig, ax = plt.subplots()
-        xs = [cp * 100 for cp in cap_props]
-        bars = ax.bar(xs, speedups, width=1.5,
-                      color=[style_for(bit_name)["color"] if s >= 1 else style_for(sieve_name)["color"]
-                             for s in speedups],
-                      alpha=0.8, edgecolor="black", linewidth=0.5)
+        for i, cache in enumerate(caches):
+            speedups = []
+            for cp in cap_props:
+                if cache in by_cap[cp] and baseline_name in by_cap[cp]:
+                    speedups.append(by_cap[cp][cache]["throughput"] / by_cap[cp][baseline_name]["throughput"])
+                else:
+                    speedups.append(1.0)
+            s = style_for(cache)
+            bars = ax.bar(x + i * width, speedups, width, label=cache,
+                          color=s["color"], edgecolor="black", linewidth=0.4)
+            for bar, sv in zip(bars, speedups):
+                ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
+                        f"{sv:.2f}x", ha="center", va="bottom", fontsize=7)
+
         ax.axhline(1.0, color="black", linewidth=0.8, linestyle="--")
         ax.set_xlabel("Cache capacity (% of working set)")
-        ax.set_ylabel(f"Speedup ({bit_name} / {sieve_name})")
+        ax.set_ylabel(f"Speedup (relative to {baseline_name})")
         ax.set_title(f"Throughput Speedup — {trace}")
-        # Annotate bars
-        for bar, s in zip(bars, speedups):
-            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.005,
-                    f"{s:.2f}x", ha="center", va="bottom", fontsize=8)
+        ax.set_xticks(x + width * (len(caches) - 1) / 2)
+        ax.set_xticklabels([f"{cp*100:.1f}%" for cp in cap_props])
+        ax.legend()
         fig.savefig(out / f"throughput_speedup_{trace}.png")
         plt.close(fig)
 
@@ -290,18 +308,18 @@ def plot_dashboard(agg: list[dict], out: Path):
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 def main():
-    parser = argparse.ArgumentParser(description="Plot SIEVE vs BitSIEVE comparison.")
-    parser.add_argument("--input", default="results_capacity_sweep.json",
-                        help="JSONL results file")
+    parser = argparse.ArgumentParser(description="Plot single-threaded cache comparison.")
+    parser.add_argument("--input", nargs="+", default=["results_capacity_sweep.json"],
+                        help="One or more JSONL results files to merge")
     parser.add_argument("--output-dir", default="plots_sieve_comparison",
                         help="Output directory for plots")
     args = parser.parse_args()
 
-    inp = Path(args.input)
+    inputs = [Path(p) for p in args.input]
     out = Path(args.output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    records = load_records(inp)
+    records = load_records(inputs)
     agg = aggregate(records)
 
     print(f"Loaded {len(records)} records → {len(agg)} aggregated rows")
