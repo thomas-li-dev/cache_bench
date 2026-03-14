@@ -42,9 +42,9 @@ MAIN_EOF
 # Add requested traces
 for trace in $TRACES; do
   case "$trace" in
-    meta22)  echo "  b.add_trace(\"meta22\", meta22_trace_location, 3);" >> main.cpp ;;
-    meta)    echo "  b.add_trace(\"meta\", meta_trace_location, 3);" >> main.cpp ;;
-    twitter) echo "  b.add_trace(\"twitter\", twi_trace_location, 3);" >> main.cpp ;;
+    meta22)  echo "  b.add_trace(\"meta22\", meta22_trace_location);" >> main.cpp ;;
+    meta)    echo "  b.add_trace(\"meta\", meta_trace_location);" >> main.cpp ;;
+    twitter) echo "  b.add_trace(\"twitter\", twi_trace_location);" >> main.cpp ;;
     *)       echo "Unknown trace: $trace" >&2; exit 1 ;;
   esac
 done
