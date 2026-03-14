@@ -1,5 +1,5 @@
 CXX      := g++
-CXXFLAGS := -Wall -Wextra -O2 -std=c++20 -MMD -MP
+CXXFLAGS := -Wall -Wextra -O3 -funroll-loops -std=c++20 -MMD -MP
 LDFLAGS  := -lboost_thread -lpthread
 
 TARGET := cache_bench

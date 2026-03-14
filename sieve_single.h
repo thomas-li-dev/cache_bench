@@ -1,79 +1,110 @@
 #pragma once
 #include "cache.h"
 #include "types.h"
-#include <atomic>
-#include <boost/unordered/concurrent_flat_map.hpp>
 #include <boost/unordered/unordered_flat_map.hpp>
 #include <cassert>
-#include <list>
-#include <mutex>
-#include <cstdio>
+#include <vector>
 using namespace boost::unordered;
 class SIEVESingle : public ICache {
 private:
-  struct ListData {
-    bool vis;
-    cache_key_t k;
-    cache_token_t t;
-    ListData *nxt, *prv;
-  };
-  ListData *head, *hand;
+  std::vector<cache_key_t> keys;
+  std::vector<cache_token_t> tokens;
+  std::vector<int> nxt;
+  std::vector<int> prv;
+  std::vector<uint64_t> vis;
+  std::vector<int> free_list;
+  int head, hand;
   int64_t cap;
   int64_t siz{};
-  unordered_flat_map<cache_key_t, ListData *> map;
+  unordered_flat_map<cache_key_t, int> map;
+
+  void set_vis(int i) { vis[i >> 6] |= uint64_t(1) << (i & 63); }
+  void clr_vis(int i) { vis[i >> 6] &= ~(uint64_t(1) << (i & 63)); }
+  bool get_vis(int i) { return (vis[i >> 6] >> (i & 63)) & 1; }
+
+  int alloc_node() {
+    if (!free_list.empty()) {
+      int idx = free_list.back();
+      free_list.pop_back();
+      return idx;
+    }
+    int idx = (int)keys.size();
+    keys.push_back(0);
+    tokens.push_back(0);
+    nxt.push_back(0);
+    prv.push_back(0);
+    if ((idx & 63) == 0)
+      vis.push_back(0);
+    return idx;
+  }
+
+  void free_node(int idx) {
+    clr_vis(idx);
+    free_list.push_back(idx);
+  }
 
 public:
   explicit SIEVESingle(size_t cap) : cap(cap) {
     assert(cap > 0);
-    head = new ListData{0, 0, 0, 0, 0};
-    head->nxt = head->prv = head;
+    keys.reserve(cap + 2);
+    tokens.reserve(cap + 2);
+    nxt.reserve(cap + 2);
+    prv.reserve(cap + 2);
+    vis.reserve((cap + 66) / 64);
+    free_list.reserve(cap + 2);
+    // sentinel at index 0
+    keys.push_back(0);
+    tokens.push_back(0);
+    nxt.push_back(0);
+    prv.push_back(0);
+    vis.push_back(0);
+    head = 0;
+    nxt[head] = head;
+    prv[head] = head;
     hand = head;
   }
 
   cache_token_t query(cache_key_t k, cache_token_t (*get_token)(void *),
                       void *ctx) override {
-    cache_token_t t;
     auto itr = map.find(k);
     if (itr != map.end()) {
-      t = itr->second->t;
-      itr->second->vis = true;
-      return t;
+      int idx = itr->second;
+      set_vis(idx);
+      return tokens[idx];
     }
-    t = get_token(ctx);
-    ListData *ld = new ListData{0, k, t, 0, 0};
-    map[k] = ld;
-    siz++;
-    auto nxt = head->nxt;
-    head->nxt = ld;
-    nxt->prv = ld;
-    ld->nxt = nxt;
-    ld->prv = head;
-
-    size_t steps = 0;
-    while (siz > cap) {
-      steps++;
-      // evict smth
-      // to end
-      if (hand == head)
-        hand = head->prv;
-      if (hand->vis) {
-        hand->vis = false;
-        hand = hand->prv;
-        continue;
+    if (siz == cap) {
+      while (true) {
+        if (hand == head)
+          hand = prv[head];
+        if (get_vis(hand)) {
+          clr_vis(hand);
+          hand = prv[hand];
+        } else
+          break;
       }
-      cache_key_t to_evict = hand->k;
-      auto prv = hand->prv, nxt = hand->nxt;
-      prv->nxt = nxt;
-      nxt->prv = prv;
+
+      cache_key_t to_evict = keys[hand];
+      int p = prv[hand], n = nxt[hand];
+      nxt[p] = n;
+      prv[n] = p;
       siz--;
-      size_t sbo = map.erase(to_evict);
-      assert(sbo == 1);
-      delete hand;
-      hand = prv;
+      map.erase(to_evict);
+      int old_hand = hand;
+      hand = p;
+      free_node(old_hand);
     }
-    static int iter = 0;
-    if (false && ++iter % 1024 == 0)
-      printf("steps %zu\n\n", steps);
+    cache_token_t t = get_token(ctx);
+    int idx = alloc_node();
+    keys[idx] = k;
+    tokens[idx] = t;
+    map[k] = idx;
+    siz++;
+    int n = nxt[head];
+    nxt[head] = idx;
+    prv[n] = idx;
+    nxt[idx] = n;
+    prv[idx] = head;
+
     return t;
   }
 
