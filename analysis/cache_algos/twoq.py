@@ -20,6 +20,22 @@ class TwoQ(CacheAlgo):
         # A1_out is the entire cache size (since it only contains references)
         self._A1_out_cache_size: int = cache_size
 
+    def _admit_to_am(self, obj_id: int) -> None:
+        # Tiny caches can result in Am capacity 0; fall back to A1_in.
+        if self._Am_cache_size <= 0:
+            if self._A1_in_cache_size > 0 and len(self._A1_in) >= self._A1_in_cache_size:
+                evicted_id, _ = self._A1_in.popitem(last=False)
+                if self._A1_out_cache_size > 0 and len(self._A1_out) >= self._A1_out_cache_size:
+                    _ = self._A1_out.popitem(last=False)
+                if self._A1_out_cache_size > 0:
+                    self._A1_out[evicted_id] = True
+            self._A1_in[obj_id] = True
+            return
+
+        if len(self._Am) >= self._Am_cache_size:
+            _ = self._Am.popitem(last=False)  # evict LRU in Am
+        self._Am[obj_id] = True
+
     def get(self, obj_id: int) -> bool:
         self._num_requests += 1
 
@@ -31,26 +47,21 @@ class TwoQ(CacheAlgo):
             self._Am.move_to_end(obj_id)  # promote to MRU
             return True
         elif obj_id in self._A1_in:
-            if len(self._Am) >= self._Am_cache_size:
-                _ = self._Am.popitem(last=False)  # evict LRU in Am
-
             self._A1_in.pop(obj_id)
-            self._Am[obj_id] = True
+            self._admit_to_am(obj_id)
             return True
         elif obj_id in self._A1_out:
-            if len(self._Am) >= self._Am_cache_size:
-                _ = self._Am.popitem(last=False)  # evict LRU in Am
-
             self._A1_out.pop(obj_id)
-            self._Am[obj_id] = True
+            self._admit_to_am(obj_id)
             self._num_misses += 1
             return False
 
-        if len(self._A1_in) >= self._A1_in_cache_size:
+        if self._A1_in_cache_size > 0 and len(self._A1_in) >= self._A1_in_cache_size:
             evicted_id, _ = self._A1_in.popitem(last=False)  # evict LRU in A1_in
-            if len(self._A1_out) >= self._A1_out_cache_size:
+            if self._A1_out_cache_size > 0 and len(self._A1_out) >= self._A1_out_cache_size:
                 _ = self._A1_out.popitem(last=False)  # evict LRU in A1_out
-            self._A1_out[evicted_id] = True # promote to A1_out
+            if self._A1_out_cache_size > 0:
+                self._A1_out[evicted_id] = True # promote to A1_out
 
         self._A1_in[obj_id] = True
         self._num_misses += 1
