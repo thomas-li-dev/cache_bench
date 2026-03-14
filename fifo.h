@@ -1,11 +1,10 @@
 #pragma once
-#include "cache.h"
 #include "types.h"
 #include <atomic>
 #include <boost/lockfree/queue.hpp>
 #include <boost/unordered/concurrent_flat_map.hpp>
 using namespace boost::unordered;
-class FIFO : public ICache {
+class FIFO {
 private:
   int64_t cap;
   boost::lockfree::queue<cache_key_t> ord;
@@ -16,7 +15,7 @@ public:
   FIFO(size_t cap) : cap(cap), ord(cap * 2) {}
 
   cache_token_t query(cache_key_t k, cache_token_t (*get_token)(void *),
-                      void *ctx) override {
+                      void *ctx) {
     cache_token_t t;
     bool hit = map.cvisit(k, [&](auto &x) { t = x.second; });
     if (hit)
@@ -43,6 +42,6 @@ public:
 
     return t;
   }
-  virtual size_t get_cap() const override { return cap; }
-  static bool can_multithread() { return true; }
+  size_t get_cap() const { return cap; }
+  static constexpr bool can_multithread() { return true; }
 };

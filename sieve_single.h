@@ -1,11 +1,10 @@
 #pragma once
-#include "cache.h"
 #include "types.h"
 #include <boost/unordered/unordered_flat_map.hpp>
 #include <cassert>
 #include <vector>
 using namespace boost::unordered;
-class SIEVESingle : public ICache {
+class SIEVESingle {
 private:
   std::vector<cache_key_t> keys;
   std::vector<cache_token_t> tokens;
@@ -65,7 +64,7 @@ public:
   }
 
   cache_token_t query(cache_key_t k, cache_token_t (*get_token)(void *),
-                      void *ctx) override {
+                      void *ctx) {
     auto itr = map.find(k);
     if (itr != map.end()) {
       int idx = itr->second;
@@ -108,6 +107,6 @@ public:
     return t;
   }
 
-  size_t get_cap() const override { return cap; }
-  static bool can_multithread() { return false; }
+  size_t get_cap() const { return cap; }
+  static constexpr bool can_multithread() { return false; }
 };

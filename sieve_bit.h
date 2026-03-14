@@ -1,5 +1,4 @@
 #pragma once
-#include "cache.h"
 #include "types.h"
 #include <bit>
 #include <boost/unordered/unordered_flat_map.hpp>
@@ -11,7 +10,7 @@ using namespace boost::unordered;
 const int W = 64;
 using T = uint64_t;
 
-template <int K> class SIEVEBit : public ICache {
+template <int K> class SIEVEBit {
 private:
   static constexpr int BLOCK_SZ = W * K;
   static constexpr int COMPACT = BLOCK_SZ / 2;
@@ -125,7 +124,7 @@ public:
   }
 
   cache_token_t query(cache_key_t k, cache_token_t (*get_token)(void *),
-                      void *ctx) override {
+                      void *ctx) {
     auto itr = map.find(k);
     if (itr != map.end()) {
       MapData &dat = itr->second;
@@ -175,6 +174,6 @@ public:
     return t;
   }
 
-  size_t get_cap() const override { return cap; }
-  static bool can_multithread() { return false; }
+  size_t get_cap() const { return cap; }
+  static constexpr bool can_multithread() { return false; }
 };

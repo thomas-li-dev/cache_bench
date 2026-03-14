@@ -1,11 +1,11 @@
 #pragma once
-#include "cache.h"
+#include "types.h"
 #include <cassert>
 #include <list>
 #include <mutex>
 #include <queue>
 #include <unordered_map>
-class LRU : public ICache {
+class LRU {
 private:
   size_t cap;
   std::list<cache_key_t> order;
@@ -31,7 +31,7 @@ public:
   LRU(size_t cap) : cap(cap) {}
 
   cache_token_t query(cache_key_t k, cache_token_t (*get_token)(void *),
-                      void *ctx) override {
+                      void *ctx) {
     std::lock_guard lock(mut);
     if (in(k)) {
       auto [t, itr] = map[k];
@@ -44,6 +44,6 @@ public:
     add(k, t);
     return t;
   }
-  virtual size_t get_cap() const override { return cap; }
-  static bool can_multithread() { return true; }
+  size_t get_cap() const { return cap; }
+  static constexpr bool can_multithread() { return true; }
 };
