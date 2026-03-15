@@ -65,3 +65,33 @@ def read_requests(tracepath: str) -> Iterator[Tuple[int, int, int]]:
         if stream is not fh:
             fh.close()
 
+
+def read_requests_next_access(tracepath: str) -> Iterator[Tuple[int, int, int, int]]:
+    stream, fh = _open_trace(tracepath)
+    try:
+        # Read large chunks and decode many records at once to reduce Python IO overhead.
+        # Keep a tiny remainder buffer for stream boundaries not aligned to RECORD_SIZE.
+        remainder = b""
+        while True:
+            data = stream.read(READ_CHUNK_SIZE)
+            if not data:
+                break
+
+            buf = remainder + data
+            full_n = len(buf) // RECORD_SIZE
+            full_bytes = full_n * RECORD_SIZE
+            if full_bytes == 0:
+                remainder = buf
+                continue
+
+            for clock_time, obj_id, obj_size, next_access in struct.iter_unpack(
+                RECORD_FORMAT, buf[:full_bytes]
+            ):
+                yield int(clock_time), int(obj_id), int(obj_size), int(next_access)
+
+            remainder = buf[full_bytes:]
+    finally:
+        stream.close()
+        if stream is not fh:
+            fh.close()
+

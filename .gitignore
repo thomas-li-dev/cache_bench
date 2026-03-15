@@ -13,3 +13,6 @@ meta_proc/
 plots/
 results.json
 analysis/data/
+analysis/venv/
+analysis/traces
+__pycache__
