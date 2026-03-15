@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
@@ -38,12 +37,19 @@ def _reductions_from_results(
         for algo in algos:
             algo_mrs = miss_ratios.get(algo)
             if fifo_large and str(large_size) in algo_mrs:
-                mr = algo_mrs[str(large_size)]
-                large_cache_size[algo].append((fifo_large - mr) / fifo_large)
+                mr_large = algo_mrs[str(large_size)]
+                large_cache_size[algo].append((fifo_large - mr_large) / fifo_large)
             if fifo_small and str(small_size) in algo_mrs:
-                small_cache_size[algo].append((fifo_small - mr) / fifo_small)
+                mr_small = algo_mrs[str(small_size)]
+                small_cache_size[algo].append((fifo_small - mr_small) / fifo_small)
 
     return large_cache_size, small_cache_size
+
+def _mean(vals: list[float]) -> float:
+    return float(np.mean(vals)) if vals else float("nan")
+
+def _panel_means(reductions: dict[str, list[float]], algos: list[str]) -> dict[str, float]:
+    return {algo: _mean(reductions.get(algo, [])) for algo in algos}
 
 def plot(
     large_cache_size: dict[str, list[float]],
@@ -64,19 +70,20 @@ def plot(
         (
             ax_c,
             large_cache_size,
-            f"Twitter workloads, large cache, {n_large} traces",
+            f"Twitter KV cache workloads, large cache, {n_large} traces",
             "#E8A020",
         ),
         (
             ax_f,
             small_cache_size,
-            f"Twitter workloads, small cache, {n_small} traces",
+            f"Twitter KV cache workloads, small cache, {n_small} traces",
             "#6495CD",
         ),
     ]
 
     for ax, reductions, title, color in panels:
         data = [reductions.get(a) for a in algos]
+        means = _panel_means(reductions, algos)
 
         ax.boxplot(
             data,
@@ -95,7 +102,7 @@ def plot(
             if vals:
                 ax.plot(
                     i,
-                    float(np.mean(vals)),
+                    means[algos[i]],
                     marker="v",
                     color="#1A6B28",
                     markersize=7,
@@ -103,13 +110,25 @@ def plot(
                     zorder=5,
                 )
 
+        mean_lines = [f"{algo}: {means[algo]:+.4f}" for algo in algos]
+        ax.text(
+            0.02,
+            0.98,
+            "Mean reduction\n" + "\n".join(mean_lines),
+            transform=ax.transAxes,
+            ha="left",
+            va="top",
+            fontsize=8,
+            bbox=dict(boxstyle="round,pad=0.25", facecolor="white", alpha=0.8),
+        )
+
         ax.set_xticks(positions)
         ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=9)
         ax.set_ylabel("Miss Ratio Reduction\nfrom FIFO", fontsize=9)
         ax.set_title(title, fontsize=9, pad=4)
         ax.grid(axis="y", linestyle="--", alpha=0.4, zorder=0)
         ax.axhline(0, color="black", linewidth=0.5, zorder=1)
-        ax.tick_params(axis="both", labelsize=8)    
+        ax.tick_params(axis="both", labelsize=8)
 
     plt.tight_layout()
     output.parent.mkdir(parents=True, exist_ok=True)

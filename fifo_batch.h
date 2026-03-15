@@ -1,15 +1,12 @@
 #pragma once
-#include "cache.h"
 #include "types.h"
 #include <atomic>
 #include <boost/lockfree/queue.hpp>
 #include <boost/unordered/concurrent_flat_map.hpp>
-#include <functional>
-
 using namespace boost::unordered;
 
 constexpr int k = 2;
-class FIFOBatch : public ICache {
+class FIFOBatch {
 private:
   int64_t cap;
   boost::lockfree::queue<cache_key_t> ord;
@@ -18,13 +15,13 @@ private:
 
 public:
   FIFOBatch(size_t cap) : cap(cap), ord(cap * 2) {}
-  cache_token_t query(cache_key_t k,
-                      std::function<cache_token_t()> get_token) override {
+  cache_token_t query(cache_key_t k, cache_token_t (*get_token)(void *),
+                      void *ctx) {
     cache_token_t t;
     bool hit = map.cvisit(k, [&](auto &x) { t = x.second; });
     if (hit)
       return t;
-    t = get_token();
+    t = get_token(ctx);
     bool inserted = map.emplace(k, t);
     if (!inserted)
       return t;
@@ -48,6 +45,6 @@ public:
 
     return t;
   }
-  virtual size_t get_cap() const override { return cap; }
-  static bool can_multithread() { return true; }
+  size_t get_cap() const { return cap; }
+  static constexpr bool can_multithread() { return true; }
 };

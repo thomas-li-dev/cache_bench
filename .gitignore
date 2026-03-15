@@ -2,6 +2,7 @@ cache_bench
 cache_bench_debug
 /preprocess/preprocess
 /preprocess/preprocess_debug
+plots*/
 *.o
 *.d
 compile_commands.json
@@ -9,6 +10,8 @@ twi_traces/
 twi_proc/
 meta_traces/
 meta_proc/
+meta22_traces/
+meta22_proc/
 .cache/
 plots/
 results.json
@@ -16,3 +19,5 @@ analysis/data/
 analysis/venv/
 analysis/traces
 __pycache__
+results*.json
+analysis/data/

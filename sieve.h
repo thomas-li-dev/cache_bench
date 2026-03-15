@@ -1,14 +1,12 @@
 #pragma once
-#include "cache.h"
 #include "types.h"
 #include <atomic>
 #include <boost/unordered/concurrent_flat_map.hpp>
 #include <cassert>
-#include <functional>
 #include <list>
 #include <mutex>
 using namespace boost::unordered;
-class SIEVE : public ICache {
+class SIEVE {
 private:
   struct ListData {
     std::atomic<bool> vis;
@@ -30,8 +28,8 @@ public:
     hand = head;
   }
 
-  cache_token_t query(cache_key_t k,
-                      std::function<cache_token_t()> get_token) override {
+  cache_token_t query(cache_key_t k, cache_token_t (*get_token)(void *),
+                      void *ctx) {
     cache_token_t t;
     bool hit = map.cvisit(k, [&](auto &x) {
       t = x.second->t;
@@ -39,7 +37,7 @@ public:
     });
     if (hit)
       return t;
-    t = get_token();
+    t = get_token(ctx);
     ListData *ld = new ListData{0, k, t, 0, 0};
     bool added = map.emplace(k, ld);
     if (!added) {
@@ -82,6 +80,6 @@ public:
     return t;
   }
 
-  size_t get_cap() const override { return cap; }
-  static bool can_multithread() { return true; }
+  size_t get_cap() const { return cap; }
+  static constexpr bool can_multithread() { return true; }
 };

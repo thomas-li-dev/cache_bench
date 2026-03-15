@@ -1,0 +1,116 @@
+{
+  "meta": {
+    "algos": [
+      "fifo",
+      "sieve",
+      "ghostsieve"
+    ],
+    "generated_at_utc": "2026-03-13T18:58:23+00:00",
+    "large_frac": 0.1,
+    "schema_version": 1,
+    "small_frac": 0.001,
+    "trace_source": "dir:data/block"
+  },
+  "traces": {
+    "block_traces_1.oracleGeneral.bin.zst": {
+      "footprint": 6014438,
+      "large_size": 601443,
+      "miss_ratios": {
+        "fifo": {
+          "6014": 0.5212242395086033,
+          "601443": 0.4602548427783498
+        },
+        "ghostsieve": {
+          "6014": 0.5249470260364785,
+          "601443": 0.46305578494707433
+        },
+        "sieve": {
+          "6014": 0.5288212638161518,
+          "601443": 0.46317605505879644
+        }
+      },
+      "path": "data/block/block_traces_1.oracleGeneral.bin.zst",
+      "small_size": 6014
+    },
+    "block_traces_2.oracleGeneral.bin.zst": {
+      "footprint": 6174083,
+      "large_size": 617408,
+      "miss_ratios": {
+        "fifo": {
+          "6174": 0.5238732845943516,
+          "617408": 0.46773395253933486
+        },
+        "ghostsieve": {
+          "6174": 0.5275709322270646,
+          "617408": 0.4714186653559386
+        },
+        "sieve": {
+          "6174": 0.5313527305025116,
+          "617408": 0.471852130371647
+        }
+      },
+      "path": "data/block/block_traces_2.oracleGeneral.bin.zst",
+      "small_size": 6174
+    },
+    "block_traces_3.oracleGeneral.bin.zst": {
+      "footprint": 6763511,
+      "large_size": 676351,
+      "miss_ratios": {
+        "fifo": {
+          "6763": 0.5388242622951289,
+          "676351": 0.4886186075436096
+        },
+        "ghostsieve": {
+          "6763": 0.5418565440328594,
+          "676351": 0.49089050803885337
+        },
+        "sieve": {
+          "6763": 0.5452118373274247,
+          "676351": 0.49080488274816625
+        }
+      },
+      "path": "data/block/block_traces_3.oracleGeneral.bin.zst",
+      "small_size": 6763
+    },
+    "block_traces_4.oracleGeneral.bin.zst": {
+      "footprint": 6815503,
+      "large_size": 681550,
+      "miss_ratios": {
+        "fifo": {
+          "6815": 0.5342190511194255,
+          "681550": 0.4812955121316838
+        },
+        "ghostsieve": {
+          "6815": 0.5378602319973221,
+          "681550": 0.48412960618285583
+        },
+        "sieve": {
+          "6815": 0.5412792203503392,
+          "681550": 0.48411880856567957
+        }
+      },
+      "path": "data/block/block_traces_4.oracleGeneral.bin.zst",
+      "small_size": 6815
+    },
+    "block_traces_5.oracleGeneral.bin.zst": {
+      "footprint": 7110414,
+      "large_size": 711041,
+      "miss_ratios": {
+        "fifo": {
+          "7110": 0.5453538196718203,
+          "711041": 0.49282022773569867
+        },
+        "ghostsieve": {
+          "7110": 0.5484235827936081,
+          "711041": 0.4959490723247843
+        },
+        "sieve": {
+          "7110": 0.5516964899837677,
+          "711041": 0.49587102982844666
+        }
+      },
+      "path": "data/block/block_traces_5.oracleGeneral.bin.zst",
+      "small_size": 7110
+    }
+  }
+}

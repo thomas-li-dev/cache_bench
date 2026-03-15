@@ -1,5 +1,5 @@
 CXX      := g++
-CXXFLAGS := -Wall -Wextra -O2 -std=c++23 -MMD -MP -I..
+CXXFLAGS := -Wall -Wextra -O2 -std=c++20 -MMD -MP -I..
 LDFLAGS  := -lboost_thread -lpthread
 
 TARGET := preprocess
@@ -10,7 +10,7 @@ SRCS := $(sort $(call rwildcard,.,*.cpp))
 OBJS := $(SRCS:.cpp=.o)
 DEPS := $(OBJS:.o=.d)
 
-DEBUG_CXXFLAGS := -Wall -Wextra -Og -g -std=c++23 -MMD -MP -I.. \
+DEBUG_CXXFLAGS := -Wall -Wextra -Og -g -std=c++20 -MMD -MP -I.. \
                   -fsanitize=address,undefined -fno-omit-frame-pointer
 DEBUG_TARGET   := preprocess_debug
 DEBUG_OBJS     := $(SRCS:.cpp=.debug.o)

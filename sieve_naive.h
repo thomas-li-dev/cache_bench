@@ -1,13 +1,11 @@
 #pragma once
-#include "cache.h"
 #include "types.h"
 #include <boost/unordered/concurrent_flat_map.hpp>
 #include <cassert>
-#include <functional>
 #include <list>
 #include <mutex>
 using namespace boost::unordered;
-class SIEVENaive : public ICache {
+class SIEVENaive {
 private:
   struct MapData {
     cache_token_t t;
@@ -57,8 +55,8 @@ private:
 public:
   explicit SIEVENaive(size_t cap) : cap(cap) { assert(cap > 0); }
 
-  cache_token_t query(cache_key_t k,
-                      std::function<cache_token_t()> get_token) override {
+  cache_token_t query(cache_key_t k, cache_token_t (*get_token)(void *),
+                      void *ctx) {
     cache_token_t t;
     bool hit = map.cvisit(k, [&](auto &x) {
       t = x.second.t;
@@ -66,7 +64,7 @@ public:
     });
     if (hit)
       return t;
-    t = get_token();
+    t = get_token(ctx);
     std::lock_guard lock{mut};
 
     if (key_order.size() == cap)
@@ -80,6 +78,6 @@ public:
     return t;
   }
 
-  size_t get_cap() const override { return cap; }
-  static bool can_multithread() { return true; }
+  size_t get_cap() const { return cap; }
+  static constexpr bool can_multithread() { return true; }
 };
